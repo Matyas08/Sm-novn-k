@@ -169,7 +169,6 @@ export default function Home() {
   const [year, setYear] = useState(now.getFullYear());
   const [shiftFilter, setShiftFilter] = useState<ShiftType | "all">("all");
   const [showShiftModal, setShowShiftModal] = useState(false);
-  const [shiftDetail, setShiftDetail] = useState<Shift | null>(null);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [shiftDate, setShiftDate] = useState("");
   const [shiftType, setShiftType] = useState<ShiftType>("morning");
@@ -235,11 +234,74 @@ export default function Home() {
   const [themeColor, setThemeColor] = useState(APP_ACCENT);
   const [themeColor2, setThemeColor2] = useState(APP_ACCENT_SECONDARY);
   const [nameDay, setNameDay] = useState<string>("");
+  const [floatingCoin, setFloatingCoin] = useState<{ id: number; left: number; top: number } | null>(null);
+  const [coinSaving, setCoinSaving] = useState(false);
 
   const currentPerson = useMemo(() => {
     const email = session?.user?.email;
     return email ? people.find(p => p.email.toLowerCase() === email.toLowerCase()) ?? null : null;
   }, [people, session]);
+
+  useEffect(() => {
+    if (!currentPerson) {
+      setFloatingCoin(null);
+      return;
+    }
+
+    let spawnTimer: ReturnType<typeof setTimeout> | undefined;
+    let hideTimer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
+    const scheduleNextCoin = () => {
+      const delay = Math.floor(Math.random() * 5001) + 10000;
+      spawnTimer = setTimeout(() => {
+        if (cancelled) return;
+        setFloatingCoin({
+          id: Date.now(),
+          left: 10 + Math.random() * 80,
+          top: 15 + Math.random() * 65,
+        });
+
+        hideTimer = setTimeout(() => {
+          if (cancelled) return;
+          setFloatingCoin(null);
+          scheduleNextCoin();
+        }, 8000);
+      }, delay);
+    };
+
+    scheduleNextCoin();
+
+    return () => {
+      cancelled = true;
+      if (spawnTimer) clearTimeout(spawnTimer);
+      if (hideTimer) clearTimeout(hideTimer);
+    };
+  }, [currentPerson?.id]);
+
+  const collectFloatingCoin = async () => {
+    if (!currentPerson || !floatingCoin || coinSaving) return;
+
+    setCoinSaving(true);
+    const nextCoins = (currentPerson.coins ?? 0) + 1;
+    const { data, error } = await supabase
+      .from("users")
+      .update({ coins: nextCoins })
+      .eq("id", currentPerson.id)
+      .select("coins")
+      .single();
+
+    if (error) {
+      alert(`Coin se nepodařilo přidat: ${error.message}`);
+      setCoinSaving(false);
+      return;
+    }
+
+    const savedCoins = data?.coins ?? nextCoins;
+    setPeople(prev => prev.map(p => p.id === currentPerson.id ? { ...p, coins: savedCoins } : p));
+    setFloatingCoin(null);
+    setCoinSaving(false);
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthLoading(false); });
@@ -250,9 +312,9 @@ export default function Home() {
   useEffect(() => {
     if (!session) { setPeople([]); return; }
     (async () => {
-      const { data, error } = await supabase.from("users").select("id,name,email,color,avatar,auth_id,birthday").order("created_at", { ascending: true });
+      const { data, error } = await supabase.from("users").select("id,name,email,color,avatar,auth_id,birthday,coins").order("created_at", { ascending: true });
       if (error) { console.error(error); return; }
-      const mapped: Person[] = (data ?? []).map(p => ({ id: p.id, name: p.name, email: p.email, color: p.color || loginUsers.find(u=>u.email===p.email)?.color || "#64748b", avatar: p.avatar || p.name?.charAt(0)?.toUpperCase() || "?", authId: p.auth_id, coins: 0, birthday: p.birthday || null }));
+      const mapped: Person[] = (data ?? []).map(p => ({ id: p.id, name: p.name, email: p.email, color: p.color || loginUsers.find(u=>u.email===p.email)?.color || "#64748b", avatar: p.avatar || p.name?.charAt(0)?.toUpperCase() || "?", authId: p.auth_id, coins: p.coins ?? 0, birthday: p.birthday || null }));
       setPeople(mapped);
       setSelectedPerson(null);
     })();
@@ -574,7 +636,7 @@ export default function Home() {
       <section className="w-full lg:ml-[252px]">
         <div className="mx-auto max-w-[1500px] px-4 pb-28 pt-24 sm:px-6 lg:px-10 lg:pb-16 lg:pt-10">
           {activePage === "overview" && <Overview people={people} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} practice={practice} openPractice={()=>setShowPracticeModal(true)} deletePractice={deletePractice} />}
-          {activePage === "shifts" && <ShiftsPage people={people} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openShiftDetail={setShiftDetail} getShift={getShift} loading={loadingShifts} />}
+          {activePage === "shifts" && <ShiftsPage people={people} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} getShift={getShift} loading={loadingShifts} />}
           {activePage === "events" && <EventsPage events={events} people={people} currentPerson={currentPerson} openCreate={()=>setShowEventModal(true)} deleteEvent={deleteEvent} />}
           {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} />}
           {activePage === "settings" && <SettingsPage currentPerson={currentPerson} setPeople={setPeople} themeColor={themeColor} setThemeColor={setThemeColor} themeColor2={themeColor2} setThemeColor2={setThemeColor2} />}
@@ -582,7 +644,17 @@ export default function Home() {
       </section>
     </div>
 
-    {shiftDetail && <ShiftDetailModal shift={shiftDetail} person={people.find(p=>p.id===shiftDetail.userId) ?? null} editable={currentPerson?.id===shiftDetail.userId} onClose={()=>setShiftDetail(null)} onEdit={()=>{const s=shiftDetail;setShiftDetail(null);openEditShift(s);}} />}
+    {floatingCoin && currentPerson && <button
+      type="button"
+      aria-label="Sebrat coin"
+      disabled={coinSaving}
+      onClick={collectFloatingCoin}
+      className="fixed z-[90] flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-amber-300/50 bg-amber-400/15 text-4xl shadow-[0_0_18px_rgba(251,191,36,.65),0_0_55px_rgba(245,158,11,.28)] backdrop-blur-md transition hover:scale-110 active:scale-90 disabled:opacity-60"
+      style={{ left: `${floatingCoin.left}%`, top: `${floatingCoin.top}%` }}
+    >
+      <span className="animate-bounce drop-shadow-[0_0_12px_rgba(251,191,36,.8)]">🪙</span>
+    </button>}
+
     {showShiftModal && currentPerson && <ShiftModal person={currentPerson} editing={editingShift} date={shiftDate} setDate={setShiftDate} type={shiftType} setType={setShiftType} start={startTime} setStart={setStartTime} end={endTime} setEnd={setEndTime} note={note} setNote={setNote} saving={savingShift} onClose={()=>setShowShiftModal(false)} onSave={saveShift} onDelete={deleteShift} />}
     {showEventModal && <EventModal people={people} onClose={()=>setShowEventModal(false)} onSave={saveEvent} />}
     {showPracticeModal && currentPerson?.email === "dkudlata9@gmail.com" && <PracticeModal onClose={()=>setShowPracticeModal(false)} onSave={savePractice} />}
@@ -639,7 +711,7 @@ function dailyBoost(person: Person | null) {
 function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift, tibiWeek, setTibiWeek, tibiOdd, tibiEven, davidSchool, practice, openPractice, deletePractice }: { people:Person[]; shifts:Shift[]; currentPerson:Person|null; events:EventItem[]; nameDay:string; openAddShift:(date?:string)=>void; tibiWeek:"odd"|"even"; setTibiWeek:(v:"odd"|"even")=>void; tibiOdd:WeekSchedule;tibiEven:WeekSchedule;davidSchool:WeekSchedule;practice:PracticeItem[];openPractice:()=>void;deletePractice:(id:string)=>Promise<void>; }) {
   const today=isoToday(); const upcoming=[...shifts].filter(s=>s.date>=today).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,8);
   return <div><PageHeader eyebrow="SMĚNOVNÍK" title="Přehled" description="Všechno důležité na jednom místě." action={<div className="flex max-w-[440px] flex-col gap-2"><div className="rounded-2xl border theme-border bg-white/[0.025] px-4 py-3 shadow-[0_12px_30px_rgba(0,0,0,.14)]"><div className="text-[9px] font-bold uppercase tracking-[.18em] text-slate-600">Dnešní povzbuzení</div><div className="mt-1.5 text-sm font-semibold leading-relaxed text-slate-200">{dailyBoost(currentPerson)}</div></div><div className="self-end rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1.5 text-[11px] text-slate-400">🎉 Dnes má svátek <span className="font-semibold text-slate-200">{nameDay || "načítám…"}</span></div></div>}/>
-    <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{people.map(p=>{const s=shifts.find(x=>x.userId===p.id&&x.date===today);return <div key={p.id} className="group relative overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(15,20,34,.94),rgba(7,10,18,.90))] p-5 shadow-[0_18px_50px_rgba(0,0,0,.25)] transition duration-300 hover:-translate-y-1" style={{borderColor:`${p.color}38`,boxShadow:`0 18px 50px rgba(0,0,0,.25), 0 0 28px ${p.color}10`}}><div className="pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full blur-[55px]" style={{background:`${p.color}28`}}/><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div><div className="text-[15px] font-black tracking-tight">{p.name}</div><div className="mt-1 text-xs" style={{color:p.id===currentPerson?.id?p.color:"#64748b"}}>{p.id===currentPerson?.id?"To jsi ty":"Člen týmu"}</div></div></div><div className="relative mt-5 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{s?<><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-2 text-lg font-black tracking-tight">{s.startTime} – {s.endTime}</div></>:<><div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div><div className="mt-1 text-xs text-slate-600">Volno</div></>}</div></div>})}</section>
+    <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{people.map(p=>{const s=shifts.find(x=>x.userId===p.id&&x.date===today);return <div key={p.id} className="group relative overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(15,20,34,.94),rgba(7,10,18,.90))] p-5 shadow-[0_18px_50px_rgba(0,0,0,.25)] transition duration-300 hover:-translate-y-1" style={{borderColor:`${p.color}38`,boxShadow:`0 18px 50px rgba(0,0,0,.25), 0 0 28px ${p.color}10`}}><div className="pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full blur-[55px]" style={{background:`${p.color}28`}}/><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div className="min-w-0 flex-1"><div className="text-[15px] font-black tracking-tight">{p.name}</div><div className="mt-1 text-xs" style={{color:p.id===currentPerson?.id?p.color:"#64748b"}}>{p.id===currentPerson?.id?"To jsi ty":"Člen týmu"}</div></div><div className="shrink-0 rounded-xl border border-amber-400/15 bg-amber-400/10 px-2.5 py-1.5 text-xs font-black text-amber-300">🪙 {p.coins ?? 0}</div></div><div className="relative mt-5 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{s?<><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-2 text-lg font-black tracking-tight">{s.startTime} – {s.endTime}</div></>:<><div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div><div className="mt-1 text-xs text-slate-600">Volno</div></>}</div></div>})}</section>
     <section className="mb-8 grid gap-5 xl:grid-cols-[1.35fr_.65fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-500">Co nás čeká dál</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcoming.map(s=>{const p=people.find(x=>x.id===s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="text-xs text-slate-500">{formatDate(s.date)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-500">{s.startTime} – {s.endTime}</div></div></div>})}</div></Card><Card className="p-6"><h2 className="font-bold">Rychlé informace</h2><p className="mt-1 text-xs text-slate-500">Aktuální stav</p><div className="mt-5 space-y-3"><MiniStat icon="calendar" label="Směn dnes" value={shifts.filter(s=>s.date===today).length}/><MiniStat icon="chart" label="Celkem směn" value={shifts.length}/><MiniStat icon="users" label="Členů" value={people.length}/><MiniStat icon="event" label="Událostí" value={events.length}/></div></Card></section>
     <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy zůstávají jen v Přehledu a nemění barvu celého webu.</p></div><div className="grid gap-5 xl:grid-cols-2"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden</SmallToggle></div>}/><SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool}/></div><Card className="mt-5 p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase"/></div><div><h3 className="font-bold">Davčův praxe</h3><p className="text-xs text-slate-500">Samostatný přehled praxe pouze tady.</p></div></div>{currentPerson?.email==="dkudlata9@gmail.com"?<button onClick={openPractice} className="flex items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.04]"><Icon name="plus" size={14}/>Přidat praxi</button>:<div className="flex items-center gap-2 text-[11px] text-slate-600"><Icon name="lock" size={13}/>Praxi upravuje pouze Davča</div>}</div>{practice.length===0?<Empty text="Zatím není zapsaná žádná praxe."/>:<div className="grid gap-2 md:grid-cols-2">{practice.map(p=><div key={p.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-4"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase" size={17}/></div><div className="flex-1"><div className="text-sm font-semibold">{formatDate(p.date)}</div><div className="text-xs text-slate-500">{p.startTime} – {p.endTime}{p.note?` · ${p.note}`:""}</div></div>{currentPerson?.email==="dkudlata9@gmail.com"&&<button onClick={()=>deletePractice(p.id)} className="text-xs text-slate-600 hover:text-red-400">Smazat</button>}</div>)}</div>}</Card></section>
   </div>;
@@ -683,16 +755,16 @@ function birthdayAgeOnDate(birthday:string | null | undefined, date:string){
   return targetYear-birthYear;
 }
 
-function ShiftsPage({people,currentPerson,selectedPerson,setSelectedPerson,month,year,changeMonth,filter,setFilter,openAddShift,openShiftDetail,getShift,loading}:{people:Person[];shifts:Shift[];currentPerson:Person|null;selectedPerson:Person|null;setSelectedPerson:(p:Person|null)=>void;month:number;year:number;changeMonth:(d:number)=>void;filter:ShiftType|"all";setFilter:(f:ShiftType|"all")=>void;openAddShift:(d?:string)=>void;openShiftDetail:(s:Shift)=>void;getShift:(pid:string,d:string)=>Shift|undefined;loading:boolean;}){
+function ShiftsPage({people,currentPerson,selectedPerson,setSelectedPerson,month,year,changeMonth,filter,setFilter,openAddShift,openEditShift,getShift,loading}:{people:Person[];shifts:Shift[];currentPerson:Person|null;selectedPerson:Person|null;setSelectedPerson:(p:Person|null)=>void;month:number;year:number;changeMonth:(d:number)=>void;filter:ShiftType|"all";setFilter:(f:ShiftType|"all")=>void;openAddShift:(d?:string)=>void;openEditShift:(s:Shift)=>void;getShift:(pid:string,d:string)=>Shift|undefined;loading:boolean;}){
   const cells:(number|null)[]=[]; for(let i=0;i<mondayOffset(year,month);i++)cells.push(null); for(let d=1;d<=daysInMonth(year,month);d++)cells.push(d); const visible=selectedPerson?[selectedPerson]:people;
   const birthdayPeopleFor=(date:string)=>{const md=date.slice(5);return visible.filter(p=>p.birthday?.slice(5)===md);};
-  return <div><PageHeader eyebrow="KALENDÁŘ" title="Směny" description="Přehled směn všech členů." action={<button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white hover:brightness-110"><Icon name="plus" size={16}/>Přidat směnu</button>}/><div className="mb-5 flex flex-wrap gap-2"><FilterButton active={filter==="all"} onClick={()=>setFilter("all")} label="Všechny"/>{(Object.keys(shiftInfo) as ShiftType[]).map(t=><FilterButton key={t} active={filter===t} onClick={()=>setFilter(t)} label={shiftInfo[t].short} color={shiftInfo[t].color} icon={shiftInfo[t].icon}/>)}</div><div className="mb-5 flex gap-2 overflow-x-auto"><button type="button" onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(null);}} aria-pressed={!selectedPerson} className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${!selectedPerson?"border-white/20 bg-white/[0.10] text-white shadow-[0_8px_22px_rgba(0,0,0,.16)]":"border-white/[0.06] text-slate-500 hover:bg-white/[0.04] hover:text-white"}`}>Všichni</button>{people.map(p=><button type="button" key={p.id} onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(p);}} className="flex items-center gap-2 rounded-xl border border-white/[0.06] px-3 py-2 text-xs transition hover:bg-white/[0.03]" style={selectedPerson?.id===p.id?{borderColor:`${p.color}60`,background:`${p.color}10`}:undefined}><Avatar person={p} size={23}/>{p.name}</button>)}</div><div className="-mx-1 overflow-x-auto pb-2"><div className="min-w-[760px] px-1"><Card className="overflow-hidden"><div className="flex items-center justify-between border-b border-white/[0.06] p-4"><button onClick={()=>changeMonth(-1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="left"/></button><div className="text-center"><div className="text-lg font-bold capitalize">{monthName(year,month)}</div><div className="text-xs text-slate-500">{year}</div></div><button onClick={()=>changeMonth(1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="right"/></button></div><div className="grid grid-cols-7 border-b border-white/[0.06]">{["Po","Út","St","Čt","Pá","So","Ne"].map((d,idx)=><div key={d} className={`p-3 text-center text-[10px] font-bold ${idx>=5?"text-slate-500":"text-slate-600"}`}>{d}</div>)}</div><div className="grid grid-cols-7">{cells.map((day,i)=>{if(!day)return <div key={`e${i}`} className="min-h-[105px] border-b border-r border-white/[0.04] bg-black/10"/>; const date=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`; const isToday=date===isoToday(); const weekend=(i%7)>=5; return <div key={date} onClick={()=>{if(!currentPerson)return;const own=getShift(currentPerson.id,date);own?openShiftDetail(own):openAddShift(date)}} className={`relative min-h-[105px] cursor-pointer border-b border-r border-white/[0.04] p-2 transition hover:bg-white/[0.035] ${weekend?"bg-white/[0.012]":""}`} style={isToday?{background:"color-mix(in srgb, var(--theme) 7%, transparent)",boxShadow:"inset 0 0 0 1px color-mix(in srgb, var(--theme) 28%, transparent)"}:undefined}><div className={`mb-2 flex h-6 w-6 items-center justify-center rounded-lg text-xs font-semibold ${isToday?"theme-soft":"text-slate-500"}`}>{day}</div>{birthdayPeopleFor(date).length>0&&<div className="mb-1.5 space-y-1">{birthdayPeopleFor(date).map(p=><div key={`birthday-${p.id}`} className="truncate rounded-lg border px-2 py-1 text-[9px] font-bold" style={{borderColor:`${p.color}45`,background:`${p.color}12`,color:p.color}}>🎂 {p.name} — {birthdayAgeOnDate(p.birthday,date)} let</div>)}</div>}<div className="space-y-1">{visible.map(p=>{const s=getShift(p.id,date);if(!s||(filter!=="all"&&s.type!==filter))return null; const editable=currentPerson?.id===p.id;return <div key={s.id} onClick={e=>{e.stopPropagation();openShiftDetail(s)}} className="rounded-lg px-2 py-1.5 text-[9px] font-semibold" style={{
+  return <div><PageHeader eyebrow="KALENDÁŘ" title="Směny" description="Přehled směn všech členů." action={<button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white hover:brightness-110"><Icon name="plus" size={16}/>Přidat směnu</button>}/><div className="mb-5 flex flex-wrap gap-2"><FilterButton active={filter==="all"} onClick={()=>setFilter("all")} label="Všechny"/>{(Object.keys(shiftInfo) as ShiftType[]).map(t=><FilterButton key={t} active={filter===t} onClick={()=>setFilter(t)} label={shiftInfo[t].short} color={shiftInfo[t].color} icon={shiftInfo[t].icon}/>)}</div><div className="mb-5 flex gap-2 overflow-x-auto"><button type="button" onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(null);}} aria-pressed={!selectedPerson} className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${!selectedPerson?"border-white/20 bg-white/[0.10] text-white shadow-[0_8px_22px_rgba(0,0,0,.16)]":"border-white/[0.06] text-slate-500 hover:bg-white/[0.04] hover:text-white"}`}>Všichni</button>{people.map(p=><button type="button" key={p.id} onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(p);}} className="flex items-center gap-2 rounded-xl border border-white/[0.06] px-3 py-2 text-xs transition hover:bg-white/[0.03]" style={selectedPerson?.id===p.id?{borderColor:`${p.color}60`,background:`${p.color}10`}:undefined}><Avatar person={p} size={23}/>{p.name}</button>)}</div><div className="-mx-1 overflow-x-auto pb-2"><div className="min-w-[760px] px-1"><Card className="overflow-hidden"><div className="flex items-center justify-between border-b border-white/[0.06] p-4"><button onClick={()=>changeMonth(-1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="left"/></button><div className="text-center"><div className="text-lg font-bold capitalize">{monthName(year,month)}</div><div className="text-xs text-slate-500">{year}</div></div><button onClick={()=>changeMonth(1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="right"/></button></div><div className="grid grid-cols-7 border-b border-white/[0.06]">{["Po","Út","St","Čt","Pá","So","Ne"].map((d,idx)=><div key={d} className={`p-3 text-center text-[10px] font-bold ${idx>=5?"text-slate-500":"text-slate-600"}`}>{d}</div>)}</div><div className="grid grid-cols-7">{cells.map((day,i)=>{if(!day)return <div key={`e${i}`} className="min-h-[105px] border-b border-r border-white/[0.04] bg-black/10"/>; const date=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`; const isToday=date===isoToday(); const weekend=(i%7)>=5; return <div key={date} onClick={()=>{if(!currentPerson)return;const own=getShift(currentPerson.id,date);own?openEditShift(own):openAddShift(date)}} className={`relative min-h-[105px] cursor-pointer border-b border-r border-white/[0.04] p-2 transition hover:bg-white/[0.035] ${weekend?"bg-white/[0.012]":""}`} style={isToday?{background:"color-mix(in srgb, var(--theme) 7%, transparent)",boxShadow:"inset 0 0 0 1px color-mix(in srgb, var(--theme) 28%, transparent)"}:undefined}><div className={`mb-2 flex h-6 w-6 items-center justify-center rounded-lg text-xs font-semibold ${isToday?"theme-soft":"text-slate-500"}`}>{day}</div>{birthdayPeopleFor(date).length>0&&<div className="mb-1.5 space-y-1">{birthdayPeopleFor(date).map(p=><div key={`birthday-${p.id}`} className="truncate rounded-lg border px-2 py-1 text-[9px] font-bold" style={{borderColor:`${p.color}45`,background:`${p.color}12`,color:p.color}}>🎂 {p.name} — {birthdayAgeOnDate(p.birthday,date)} let</div>)}</div>}<div className="space-y-1">{visible.map(p=>{const s=getShift(p.id,date);if(!s||(filter!=="all"&&s.type!==filter))return null; const editable=currentPerson?.id===p.id;return <div key={s.id} onClick={e=>{e.stopPropagation();if(editable)openEditShift(s)}} className="rounded-lg px-2 py-1.5 text-[9px] font-semibold" style={{
   background:`linear-gradient(135deg, ${shiftInfo[s.type].color}55, ${shiftInfo[s.type].color}20)`,
   color:"#fff",
   border:`1px solid ${shiftInfo[s.type].color}88`,
   borderLeft:`3px solid ${shiftInfo[s.type].color}`,
   boxShadow:`inset 0 0 22px ${shiftInfo[s.type].color}20, 0 6px 20px ${shiftInfo[s.type].color}18`,
-  cursor:"pointer"
+  cursor:editable?"pointer":"default"
 }}><div className="truncate">{p.name}</div><div className="opacity-70">{s.startTime}–{s.endTime}</div></div>})}</div></div>})}</div></Card></div></div><div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 text-xs text-slate-500"><Icon name="lock" size={15}/>{loading?"Načítám směny…":"Upravovat můžeš pouze svoje směny. Směny ostatních jsou pouze k zobrazení."}</div></div>;
 }
 
@@ -787,11 +859,6 @@ function SettingsPage({currentPerson,setPeople,themeColor,setThemeColor,themeCol
   </div></div>
 }
 function PasswordInput({label,value,onChange}:{label:string;value:string;onChange:(v:string)=>void}){return <div><label className="mb-2 block text-xs text-slate-400">{label}</label><input type="password" value={value} onChange={e=>onChange(e.target.value)} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-indigo-400/50 focus:ring-2 focus:ring-indigo-500/10"/></div>}
-
-function ShiftDetailModal({shift,person,editable,onClose,onEdit}:{shift:Shift;person:Person|null;editable:boolean;onClose:()=>void;onEdit:()=>void}){
-  const info=shiftInfo[shift.type];
-  return <Modal onClose={onClose}><div className="flex items-start gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border" style={{borderColor:`${info.color}55`,background:`${info.color}18`,color:info.color}}><Icon name={info.icon} size={21}/></div><div className="min-w-0"><div className="text-[10px] font-bold uppercase tracking-[.18em]" style={{color:info.color}}>{info.label}</div><h2 className="mt-1 text-xl font-black text-white">Detail směny</h2><p className="mt-1 text-xs text-slate-500">{person?.name || "Neznámý uživatel"}</p></div></div><div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Datum</div><div className="mt-1 font-semibold text-white">{new Date(`${shift.date}T12:00:00`).toLocaleDateString("cs-CZ",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Čas</div><div className="mt-1 font-semibold text-white">{shift.startTime}–{shift.endTime}</div></div></div><div className="mt-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Poznámka</div><div className={`mt-2 whitespace-pre-wrap text-sm ${shift.note?.trim()?"text-slate-200":"italic text-slate-600"}`}>{shift.note?.trim() || "Bez poznámky"}</div></div><div className="mt-6 flex justify-end gap-2"><button onClick={onClose} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-400">Zavřít</button>{editable&&<button onClick={onEdit} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110">Upravit směnu</button>}</div></Modal>
-}
 
 function ShiftModal({person,editing,date,setDate,type,setType,start,setStart,end,setEnd,note,setNote,saving,onClose,onSave,onDelete}:{person:Person;editing:Shift|null;date:string;setDate:(v:string)=>void;type:ShiftType;setType:(v:ShiftType)=>void;start:string;setStart:(v:string)=>void;end:string;setEnd:(v:string)=>void;note:string;setNote:(v:string)=>void;saving:boolean;onClose:()=>void;onSave:()=>void;onDelete:()=>void}){return <Modal onClose={onClose}><div className="flex items-center gap-3"><Avatar person={person} size={44}/><div><h2 className="font-bold">{editing?"Upravit směnu":"Přidat směnu"}</h2><p className="text-xs text-slate-500">{person.name}</p></div></div><div className="mt-5 space-y-4"><Input label="Datum" type="date" value={date} onChange={setDate}/><div><label className="mb-2 block text-xs text-slate-400">Typ směny</label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{(Object.keys(shiftInfo) as ShiftType[]).map(t=><button key={t} onClick={()=>{setType(t);if(t==="all_day"){setStart("00:00");setEnd("23:59");}else if(t==="intershift"){setStart("10:00");setEnd("18:00");}else if(t==="midnight"){setStart("00:00");setEnd("08:00");}}} className="flex items-center gap-2 rounded-xl border p-3 text-xs font-semibold" style={type===t?{borderColor:`${shiftInfo[t].color}70`,background:`${shiftInfo[t].color}12`,color:shiftInfo[t].color}:{borderColor:"rgba(255,255,255,.06)",color:"#94a3b8"}}><Icon name={shiftInfo[t].icon} size={15}/>{shiftInfo[t].short}</button>)}</div></div><div className="grid grid-cols-2 gap-3"><Input label="Od" type="time" value={start} onChange={setStart}/><Input label="Do" type="time" value={end} onChange={setEnd}/></div><div><label className="mb-2 block text-xs text-slate-400">Poznámka</label><textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div></div><div className="mt-6 flex gap-2">{editing&&<button onClick={onDelete} className="rounded-xl border border-red-500/20 px-4 py-3 text-xs font-semibold text-red-400">Smazat</button>}<button onClick={onClose} className="ml-auto rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-400">Zrušit</button><button onClick={onSave} disabled={saving} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110 disabled:opacity-50">{saving?"Ukládám…":"Uložit"}</button></div></Modal>}
 
