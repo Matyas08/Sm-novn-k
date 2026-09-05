@@ -56,7 +56,7 @@ const loginUsers = [
   { name: "Tibík", email: "08matytibi3115@gmail.com", color: "#22d3ee", avatar: "T" },
   { name: "Davča", email: "dkudlata9@gmail.com", color: "#a855f7", avatar: "K" },
   { name: "Matýsek", email: "matejuher15@gmail.com", color: "#3b82f6", avatar: "M" },
-  { name: "Kuba", email: "jakub.proch154@seznam.cz", color: "#ef4444", avatar: "K" },
+  { name: "Kuba", email: "jakub.proch145@seznam.cz", color: "#ef4444", avatar: "K" },
 ] as const;
 
 const shiftInfo: Record<ShiftType, { label: string; short: string; color: string; icon: string }> = {
