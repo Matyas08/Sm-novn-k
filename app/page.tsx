@@ -51,6 +51,7 @@ type WeekSchedule = Record<string, Lesson[]>;
 
 const APP_ACCENT = "#6d5dfc";
 const APP_ACCENT_SECONDARY = "#8b5cf6";
+const DAVID_AUTH_ID = "0989a80c-eaec-425b-a9e9-6ff0173c678d";
 
 const loginUsers = [
   { name: "Tibík", email: "08matytibi3115@gmail.com", color: "#22d3ee", avatar: "T" },
@@ -265,6 +266,29 @@ export default function Home() {
     })();
   }, [session]);
 
+  useEffect(() => {
+    if (!session) { setPractice([]); return; }
+    (async () => {
+      const { data, error } = await supabase
+        .from("practices")
+        .select("id,date,start_time,end_time,note")
+        .order("date", { ascending: true });
+
+      if (error) {
+        console.error("Chyba při načítání praxí:", error);
+        return;
+      }
+
+      setPractice((data ?? []).map(p => ({
+        id: p.id,
+        date: p.date,
+        startTime: p.start_time?.slice(0,5) || "",
+        endTime: p.end_time?.slice(0,5) || "",
+        note: p.note || "",
+      })));
+    })();
+  }, [session]);
+
   useEffect(() => { if (currentPerson && !statsPersonId) setStatsPersonId(currentPerson.id); }, [currentPerson, statsPersonId]);
   useEffect(() => {
     if (!currentPerson) return;
@@ -327,6 +351,54 @@ export default function Home() {
     const { error } = await supabase.from("shifts").delete().eq("id", editingShift.id);
     if (error) alert(error.message); else { setShifts(prev=>prev.filter(s=>s.id!==editingShift.id)); setShowShiftModal(false); setEditingShift(null); }
   };
+
+  const savePractice = async (item: PracticeItem) => {
+    if (!currentPerson || currentPerson.email !== "dkudlata9@gmail.com") return;
+
+    const { data, error } = await supabase
+      .from("practices")
+      .insert({
+        user_id: DAVID_AUTH_ID,
+        date: item.date,
+        start_time: item.startTime,
+        end_time: item.endTime,
+        note: item.note || "",
+      })
+      .select("id,date,start_time,end_time,note")
+      .single();
+
+    if (error) {
+      alert(`Praxi se nepodařilo uložit: ${error.message}`);
+      return;
+    }
+
+    const saved: PracticeItem = {
+      id: data.id,
+      date: data.date,
+      startTime: data.start_time?.slice(0,5) || "",
+      endTime: data.end_time?.slice(0,5) || "",
+      note: data.note || "",
+    };
+
+    setPractice(prev => [...prev, saved].sort((a,b) => a.date.localeCompare(b.date)));
+    setShowPracticeModal(false);
+  };
+
+  const deletePractice = async (id: string) => {
+    if (!currentPerson || currentPerson.email !== "dkudlata9@gmail.com") return;
+
+    const { error } = await supabase
+      .from("practices")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      alert(`Praxi se nepodařilo smazat: ${error.message}`);
+      return;
+    }
+
+    setPractice(prev => prev.filter(p => p.id !== id));
+  };
   const getShift = (personId: string, date: string) => shifts.find(s => s.userId===personId && s.date===date);
   const changeMonth = (dir: number) => { let m=month+dir,y=year; if(m<0){m=11;y--;} if(m>11){m=0;y++;} setMonth(m);setYear(y); };
 
@@ -360,7 +432,7 @@ export default function Home() {
       <Sidebar activePage={activePage} setActivePage={setActivePage} currentPerson={currentPerson} onLogout={logout} />
       <section className="w-full lg:ml-[252px]">
         <div className="mx-auto max-w-[1500px] px-4 pb-16 pt-24 sm:px-6 lg:px-10 lg:pt-10">
-          {activePage === "overview" && <Overview people={people} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} practice={practice} setPractice={setPractice} openPractice={()=>setShowPracticeModal(true)} />}
+          {activePage === "overview" && <Overview people={people} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} practice={practice} openPractice={()=>setShowPracticeModal(true)} deletePractice={deletePractice} />}
           {activePage === "shifts" && <ShiftsPage people={people} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} getShift={getShift} loading={loadingShifts} />}
           {activePage === "events" && <EventsPage events={events} setEvents={setEvents} people={people} openCreate={()=>setShowEventModal(true)} />}
           {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} />}
@@ -371,7 +443,7 @@ export default function Home() {
 
     {showShiftModal && currentPerson && <ShiftModal person={currentPerson} editing={editingShift} date={shiftDate} setDate={setShiftDate} type={shiftType} setType={setShiftType} start={startTime} setStart={setStartTime} end={endTime} setEnd={setEndTime} note={note} setNote={setNote} saving={savingShift} onClose={()=>setShowShiftModal(false)} onSave={saveShift} onDelete={deleteShift} />}
     {showEventModal && <EventModal people={people} onClose={()=>setShowEventModal(false)} onSave={(event)=>{setEvents(prev=>[...prev,event].sort((a,b)=>a.date.localeCompare(b.date))); setShowEventModal(false);}} />}
-    {showPracticeModal && currentPerson?.email === "dkudlata9@gmail.com" && <PracticeModal onClose={()=>setShowPracticeModal(false)} onSave={(item)=>{setPractice(prev=>[...prev,item].sort((a,b)=>a.date.localeCompare(b.date)));setShowPracticeModal(false);}} />}
+    {showPracticeModal && currentPerson?.email === "dkudlata9@gmail.com" && <PracticeModal onClose={()=>setShowPracticeModal(false)} onSave={savePractice} />}
   </main>;
 }
 
@@ -422,12 +494,12 @@ function dailyBoost(person: Person | null) {
   return messages[day % messages.length];
 }
 
-function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift, tibiWeek, setTibiWeek, tibiOdd, tibiEven, davidSchool, practice, setPractice, openPractice }: { people:Person[]; shifts:Shift[]; currentPerson:Person|null; events:EventItem[]; nameDay:string; openAddShift:(date?:string)=>void; tibiWeek:"odd"|"even"; setTibiWeek:(v:"odd"|"even")=>void; tibiOdd:WeekSchedule;tibiEven:WeekSchedule;davidSchool:WeekSchedule;practice:PracticeItem[];setPractice:React.Dispatch<React.SetStateAction<PracticeItem[]>>;openPractice:()=>void; }) {
+function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift, tibiWeek, setTibiWeek, tibiOdd, tibiEven, davidSchool, practice, openPractice, deletePractice }: { people:Person[]; shifts:Shift[]; currentPerson:Person|null; events:EventItem[]; nameDay:string; openAddShift:(date?:string)=>void; tibiWeek:"odd"|"even"; setTibiWeek:(v:"odd"|"even")=>void; tibiOdd:WeekSchedule;tibiEven:WeekSchedule;davidSchool:WeekSchedule;practice:PracticeItem[];openPractice:()=>void;deletePractice:(id:string)=>Promise<void>; }) {
   const today=isoToday(); const upcoming=[...shifts].filter(s=>s.date>=today).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,8);
   return <div><PageHeader eyebrow="SMĚNOVNÍK" title="Přehled" description="Všechno důležité na jednom místě." action={<div className="flex max-w-[440px] flex-col gap-2"><div className="rounded-2xl border theme-border bg-white/[0.025] px-4 py-3 shadow-[0_12px_30px_rgba(0,0,0,.14)]"><div className="text-[9px] font-bold uppercase tracking-[.18em] text-slate-600">Dnešní povzbuzení</div><div className="mt-1.5 text-sm font-semibold leading-relaxed text-slate-200">{dailyBoost(currentPerson)}</div></div><div className="self-end rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1.5 text-[11px] text-slate-400">🎉 Dnes má svátek <span className="font-semibold text-slate-200">{nameDay || "načítám…"}</span></div></div>}/>
     <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{people.map(p=>{const s=shifts.find(x=>x.userId===p.id&&x.date===today);return <div key={p.id} className="group relative overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(15,20,34,.94),rgba(7,10,18,.90))] p-5 shadow-[0_18px_50px_rgba(0,0,0,.25)] transition duration-300 hover:-translate-y-1" style={{borderColor:`${p.color}38`,boxShadow:`0 18px 50px rgba(0,0,0,.25), 0 0 28px ${p.color}10`}}><div className="pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full blur-[55px]" style={{background:`${p.color}28`}}/><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div><div className="text-[15px] font-black tracking-tight">{p.name}</div><div className="mt-1 text-xs" style={{color:p.id===currentPerson?.id?p.color:"#64748b"}}>{p.id===currentPerson?.id?"To jsi ty":"Člen týmu"}</div></div></div><div className="relative mt-5 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{s?<><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-2 text-lg font-black tracking-tight">{s.startTime} – {s.endTime}</div></>:<><div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div><div className="mt-1 text-xs text-slate-600">Volno</div></>}</div></div>})}</section>
     <section className="mb-8 grid gap-5 xl:grid-cols-[1.35fr_.65fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-500">Co nás čeká dál</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcoming.map(s=>{const p=people.find(x=>x.id===s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="text-xs text-slate-500">{formatDate(s.date)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-500">{s.startTime} – {s.endTime}</div></div></div>})}</div></Card><Card className="p-6"><h2 className="font-bold">Rychlé informace</h2><p className="mt-1 text-xs text-slate-500">Aktuální stav</p><div className="mt-5 space-y-3"><MiniStat icon="calendar" label="Směn dnes" value={shifts.filter(s=>s.date===today).length}/><MiniStat icon="chart" label="Celkem směn" value={shifts.length}/><MiniStat icon="users" label="Členů" value={people.length}/><MiniStat icon="event" label="Událostí" value={events.length}/></div></Card></section>
-    <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy zůstávají jen v Přehledu a nemění barvu celého webu.</p></div><div className="grid gap-5 xl:grid-cols-2"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden</SmallToggle></div>}/><SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool}/></div><Card className="mt-5 p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase"/></div><div><h3 className="font-bold">Davčův praxe</h3><p className="text-xs text-slate-500">Samostatný přehled praxe pouze tady.</p></div></div>{currentPerson?.email==="dkudlata9@gmail.com"?<button onClick={openPractice} className="flex items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.04]"><Icon name="plus" size={14}/>Přidat praxi</button>:<div className="flex items-center gap-2 text-[11px] text-slate-600"><Icon name="lock" size={13}/>Praxi upravuje pouze Davča</div>}</div>{practice.length===0?<Empty text="Zatím není zapsaná žádná praxe."/>:<div className="grid gap-2 md:grid-cols-2">{practice.map(p=><div key={p.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-4"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase" size={17}/></div><div className="flex-1"><div className="text-sm font-semibold">{formatDate(p.date)}</div><div className="text-xs text-slate-500">{p.startTime} – {p.endTime}{p.note?` · ${p.note}`:""}</div></div>{currentPerson?.email==="dkudlata9@gmail.com"&&<button onClick={()=>setPractice(prev=>prev.filter(x=>x.id!==p.id))} className="text-xs text-slate-600 hover:text-red-400">Smazat</button>}</div>)}</div>}</Card></section>
+    <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy zůstávají jen v Přehledu a nemění barvu celého webu.</p></div><div className="grid gap-5 xl:grid-cols-2"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden</SmallToggle></div>}/><SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool}/></div><Card className="mt-5 p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase"/></div><div><h3 className="font-bold">Davčův praxe</h3><p className="text-xs text-slate-500">Samostatný přehled praxe pouze tady.</p></div></div>{currentPerson?.email==="dkudlata9@gmail.com"?<button onClick={openPractice} className="flex items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.04]"><Icon name="plus" size={14}/>Přidat praxi</button>:<div className="flex items-center gap-2 text-[11px] text-slate-600"><Icon name="lock" size={13}/>Praxi upravuje pouze Davča</div>}</div>{practice.length===0?<Empty text="Zatím není zapsaná žádná praxe."/>:<div className="grid gap-2 md:grid-cols-2">{practice.map(p=><div key={p.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-4"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase" size={17}/></div><div className="flex-1"><div className="text-sm font-semibold">{formatDate(p.date)}</div><div className="text-xs text-slate-500">{p.startTime} – {p.endTime}{p.note?` · ${p.note}`:""}</div></div>{currentPerson?.email==="dkudlata9@gmail.com"&&<button onClick={()=>deletePractice(p.id)} className="text-xs text-slate-600 hover:text-red-400">Smazat</button>}</div>)}</div>}</Card></section>
   </div>;
 }
 
