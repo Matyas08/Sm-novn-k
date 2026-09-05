@@ -36,6 +36,7 @@ type EventItem = {
   place: string;
   description: string;
   participants: string[];
+  createdBy?: string;
 };
 
 type PracticeItem = {
@@ -289,6 +290,51 @@ export default function Home() {
     })();
   }, [session]);
 
+  useEffect(() => {
+    if (!session) {
+      setEvents([]);
+      return;
+    }
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("events")
+        .select(`
+          id,
+          created_by,
+          title,
+          event_date,
+          event_time,
+          location,
+          description,
+          event_participants (
+            user_id
+          )
+        `)
+        .order("event_date", { ascending: true });
+
+      if (error) {
+        console.error("Chyba při načítání událostí:", error);
+        return;
+      }
+
+      const mapped: EventItem[] = (data ?? []).map(e => ({
+        id: e.id,
+        title: e.title,
+        date: e.event_date,
+        time: e.event_time?.slice(0, 5) || "",
+        place: e.location || "",
+        description: e.description || "",
+        createdBy: e.created_by,
+        participants: (e.event_participants ?? [])
+          .map(participant => people.find(person => person.authId === participant.user_id)?.id)
+          .filter((id): id is string => Boolean(id)),
+      }));
+
+      setEvents(mapped);
+    })();
+  }, [session, people]);
+
   useEffect(() => { if (currentPerson && !statsPersonId) setStatsPersonId(currentPerson.id); }, [currentPerson, statsPersonId]);
   useEffect(() => {
     if (!currentPerson) return;
@@ -399,6 +445,83 @@ export default function Home() {
 
     setPractice(prev => prev.filter(p => p.id !== id));
   };
+
+  const saveEvent = async (item: EventItem) => {
+    if (!currentPerson?.authId) {
+      alert("Nepodařilo se zjistit přihlášeného uživatele.");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("events")
+      .insert({
+        created_by: currentPerson.authId,
+        title: item.title,
+        event_date: item.date,
+        event_time: item.time,
+        location: item.place || null,
+        description: item.description || null,
+      })
+      .select("id,created_by,title,event_date,event_time,location,description")
+      .single();
+
+    if (error) {
+      alert(`Událost se nepodařilo vytvořit: ${error.message}`);
+      return;
+    }
+
+    const participantsPayload = item.participants
+      .map(personId => people.find(person => person.id === personId))
+      .filter((person): person is Person => Boolean(person?.authId))
+      .map(person => ({
+        event_id: data.id,
+        user_id: person.authId!,
+      }));
+
+    if (participantsPayload.length > 0) {
+      const { error: participantsError } = await supabase
+        .from("event_participants")
+        .insert(participantsPayload);
+
+      if (participantsError) {
+        await supabase.from("events").delete().eq("id", data.id);
+        alert(`Účastníky se nepodařilo uložit: ${participantsError.message}`);
+        return;
+      }
+    }
+
+    const saved: EventItem = {
+      id: data.id,
+      title: data.title,
+      date: data.event_date,
+      time: data.event_time?.slice(0, 5) || "",
+      place: data.location || "",
+      description: data.description || "",
+      participants: item.participants,
+      createdBy: data.created_by,
+    };
+
+    setEvents(prev => [...prev, saved].sort((a, b) => a.date.localeCompare(b.date)));
+    setShowEventModal(false);
+  };
+
+  const deleteEvent = async (id: string) => {
+    const event = events.find(item => item.id === id);
+    if (!event || !currentPerson?.authId || event.createdBy !== currentPerson.authId) return;
+
+    const { error } = await supabase
+      .from("events")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      alert(`Událost se nepodařilo smazat: ${error.message}`);
+      return;
+    }
+
+    setEvents(prev => prev.filter(item => item.id !== id));
+  };
+
   const getShift = (personId: string, date: string) => shifts.find(s => s.userId===personId && s.date===date);
   const changeMonth = (dir: number) => { let m=month+dir,y=year; if(m<0){m=11;y--;} if(m>11){m=0;y++;} setMonth(m);setYear(y); };
 
@@ -434,7 +557,7 @@ export default function Home() {
         <div className="mx-auto max-w-[1500px] px-4 pb-16 pt-24 sm:px-6 lg:px-10 lg:pt-10">
           {activePage === "overview" && <Overview people={people} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} practice={practice} openPractice={()=>setShowPracticeModal(true)} deletePractice={deletePractice} />}
           {activePage === "shifts" && <ShiftsPage people={people} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} getShift={getShift} loading={loadingShifts} />}
-          {activePage === "events" && <EventsPage events={events} setEvents={setEvents} people={people} openCreate={()=>setShowEventModal(true)} />}
+          {activePage === "events" && <EventsPage events={events} people={people} currentPerson={currentPerson} openCreate={()=>setShowEventModal(true)} deleteEvent={deleteEvent} />}
           {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} />}
           {activePage === "settings" && <SettingsPage currentPerson={currentPerson} setPeople={setPeople} themeColor={themeColor} setThemeColor={setThemeColor} themeColor2={themeColor2} setThemeColor2={setThemeColor2} />}
         </div>
@@ -442,7 +565,7 @@ export default function Home() {
     </div>
 
     {showShiftModal && currentPerson && <ShiftModal person={currentPerson} editing={editingShift} date={shiftDate} setDate={setShiftDate} type={shiftType} setType={setShiftType} start={startTime} setStart={setStartTime} end={endTime} setEnd={setEndTime} note={note} setNote={setNote} saving={savingShift} onClose={()=>setShowShiftModal(false)} onSave={saveShift} onDelete={deleteShift} />}
-    {showEventModal && <EventModal people={people} onClose={()=>setShowEventModal(false)} onSave={(event)=>{setEvents(prev=>[...prev,event].sort((a,b)=>a.date.localeCompare(b.date))); setShowEventModal(false);}} />}
+    {showEventModal && <EventModal people={people} onClose={()=>setShowEventModal(false)} onSave={saveEvent} />}
     {showPracticeModal && currentPerson?.email === "dkudlata9@gmail.com" && <PracticeModal onClose={()=>setShowPracticeModal(false)} onSave={savePractice} />}
   </main>;
 }
@@ -565,9 +688,9 @@ function FilterButton({active,onClick,label,color,icon}:{active:boolean;onClick:
   </button>
 }
 
-function EventsPage({events,setEvents,people,openCreate}:{events:EventItem[];setEvents:React.Dispatch<React.SetStateAction<EventItem[]>>;people:Person[];openCreate:()=>void}){
+function EventsPage({events,people,currentPerson,openCreate,deleteEvent}:{events:EventItem[];people:Person[];currentPerson:Person|null;openCreate:()=>void;deleteEvent:(id:string)=>Promise<void>}){
   return <div><PageHeader eyebrow="PLÁNY" title="Události" description="Společné akce, výlety a další plány." action={<button type="button" onClick={openCreate} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110"><Icon name="plus" size={16}/>Nová událost</button>}/>
-    {events.length===0?<div className="rounded-3xl border border-dashed border-white/[0.09] bg-white/[0.02] py-16 text-center"><div className="text-5xl">☹️</div><div className="mt-4 text-base font-semibold text-slate-300">Žádná událost</div><div className="mt-1 text-xs text-slate-600">Zatím tu nic naplánovaného není.</div></div>:<div className="grid gap-4 md:grid-cols-2">{events.map(e=><Card key={e.id} className="p-5"><div className="flex items-start justify-between"><div><div className="text-xs text-violet-300">{formatDate(e.date)} · {e.time}</div><h3 className="mt-2 text-lg font-bold">{e.title}</h3><p className="mt-1 text-sm text-slate-500">{e.place||"Bez místa"}</p></div><button type="button" onClick={()=>setEvents(prev=>prev.filter(x=>x.id!==e.id))} className="text-xs text-slate-600 hover:text-red-400">Smazat</button></div>{e.description&&<p className="mt-4 text-sm text-slate-400">{e.description}</p>}<div className="mt-4 flex -space-x-2">{e.participants.map(id=>{const p=people.find(x=>x.id===id);return p?<Avatar key={id} person={p} size={30}/>:null})}</div></Card>)}</div>}</div>}
+    {events.length===0?<div className="rounded-3xl border border-dashed border-white/[0.09] bg-white/[0.02] py-16 text-center"><div className="text-5xl">☹️</div><div className="mt-4 text-base font-semibold text-slate-300">Žádná událost</div><div className="mt-1 text-xs text-slate-600">Zatím tu nic naplánovaného není.</div></div>:<div className="grid gap-4 md:grid-cols-2">{events.map(e=><Card key={e.id} className="p-5"><div className="flex items-start justify-between"><div><div className="text-xs text-violet-300">{formatDate(e.date)} · {e.time}</div><h3 className="mt-2 text-lg font-bold">{e.title}</h3><p className="mt-1 text-sm text-slate-500">{e.place||"Bez místa"}</p></div>{currentPerson?.authId===e.createdBy&&<button type="button" onClick={()=>deleteEvent(e.id)} className="text-xs text-slate-600 hover:text-red-400">Smazat</button>}</div>{e.description&&<p className="mt-4 text-sm text-slate-400">{e.description}</p>}<div className="mt-4 flex -space-x-2">{e.participants.map(id=>{const p=people.find(x=>x.id===id);return p?<Avatar key={id} person={p} size={30}/>:null})}</div></Card>)}</div>}</div>}
 
 function StatsPage({stats,selectedId,setSelectedId}:{stats:{person:Person;shifts:number;hours:number;morning:number;afternoon:number;night:number;vacation:number;sick:number}[];selectedId:string|null;setSelectedId:(id:string)=>void}){
   const selected=stats.find(s=>s.person.id===selectedId)||stats[0];
@@ -648,7 +771,24 @@ function PasswordInput({label,value,onChange}:{label:string;value:string;onChang
 
 function ShiftModal({person,editing,date,setDate,type,setType,start,setStart,end,setEnd,note,setNote,saving,onClose,onSave,onDelete}:{person:Person;editing:Shift|null;date:string;setDate:(v:string)=>void;type:ShiftType;setType:(v:ShiftType)=>void;start:string;setStart:(v:string)=>void;end:string;setEnd:(v:string)=>void;note:string;setNote:(v:string)=>void;saving:boolean;onClose:()=>void;onSave:()=>void;onDelete:()=>void}){return <Modal onClose={onClose}><div className="flex items-center gap-3"><Avatar person={person} size={44}/><div><h2 className="font-bold">{editing?"Upravit směnu":"Přidat směnu"}</h2><p className="text-xs text-slate-500">{person.name}</p></div></div><div className="mt-5 space-y-4"><Input label="Datum" type="date" value={date} onChange={setDate}/><div><label className="mb-2 block text-xs text-slate-400">Typ směny</label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{(Object.keys(shiftInfo) as ShiftType[]).map(t=><button key={t} onClick={()=>{setType(t);if(t==="all_day"){setStart("00:00");setEnd("23:59");}}} className="flex items-center gap-2 rounded-xl border p-3 text-xs font-semibold" style={type===t?{borderColor:`${shiftInfo[t].color}70`,background:`${shiftInfo[t].color}12`,color:shiftInfo[t].color}:{borderColor:"rgba(255,255,255,.06)",color:"#94a3b8"}}><Icon name={shiftInfo[t].icon} size={15}/>{shiftInfo[t].short}</button>)}</div></div><div className="grid grid-cols-2 gap-3"><Input label="Od" type="time" value={start} onChange={setStart}/><Input label="Do" type="time" value={end} onChange={setEnd}/></div><div><label className="mb-2 block text-xs text-slate-400">Poznámka</label><textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div></div><div className="mt-6 flex gap-2">{editing&&<button onClick={onDelete} className="rounded-xl border border-red-500/20 px-4 py-3 text-xs font-semibold text-red-400">Smazat</button>}<button onClick={onClose} className="ml-auto rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-400">Zrušit</button><button onClick={onSave} disabled={saving} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110 disabled:opacity-50">{saving?"Ukládám…":"Uložit"}</button></div></Modal>}
 
-function EventModal({people,onClose,onSave}:{people:Person[];onClose:()=>void;onSave:(e:EventItem)=>void}){const[title,setTitle]=useState("");const[date,setDate]=useState("");const[time,setTime]=useState("18:00");const[place,setPlace]=useState("");const[description,setDescription]=useState("");const[participants,setParticipants]=useState<string[]>([]);return <Modal onClose={onClose}><h2 className="font-bold">Nová událost</h2><div className="mt-5 space-y-4"><Input label="Název" value={title} onChange={setTitle}/><div className="grid grid-cols-2 gap-3"><Input label="Datum" type="date" value={date} onChange={setDate}/><Input label="Čas" type="time" value={time} onChange={setTime}/></div><Input label="Místo" value={place} onChange={setPlace}/><div><label className="mb-2 block text-xs text-slate-400">Popis</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div><div><label className="mb-2 block text-xs text-slate-400">Účastníci</label><div className="flex flex-wrap gap-2">{people.map(p=><button key={p.id} onClick={()=>setParticipants(prev=>prev.includes(p.id)?prev.filter(x=>x!==p.id):[...prev,p.id])} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs" style={participants.includes(p.id)?{borderColor:`${p.color}60`,background:`${p.color}10`}:{borderColor:"rgba(255,255,255,.06)"}}><Avatar person={p} size={22}/>{p.name}</button>)}</div></div></div><div className="mt-6 flex justify-end gap-2"><button onClick={onClose} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs text-slate-400">Zrušit</button><button onClick={()=>{if(title&&date)onSave({id:crypto.randomUUID(),title,date,time,place,description,participants})}} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110">Vytvořit</button></div></Modal>}
+function EventModal({people,onClose,onSave}:{people:Person[];onClose:()=>void;onSave:(e:EventItem)=>Promise<void>}){
+  const[title,setTitle]=useState("");
+  const[date,setDate]=useState("");
+  const[time,setTime]=useState("18:00");
+  const[place,setPlace]=useState("");
+  const[description,setDescription]=useState("");
+  const[participants,setParticipants]=useState<string[]>([]);
+  const[saving,setSaving]=useState(false);
+
+  const submit=async()=>{
+    if(!title.trim()||!date||saving)return;
+    setSaving(true);
+    await onSave({id:"",title:title.trim(),date,time,place:place.trim(),description:description.trim(),participants});
+    setSaving(false);
+  };
+
+  return <Modal onClose={onClose}><h2 className="font-bold">Nová událost</h2><div className="mt-5 space-y-4"><Input label="Název" value={title} onChange={setTitle}/><div className="grid grid-cols-2 gap-3"><Input label="Datum" type="date" value={date} onChange={setDate}/><Input label="Čas" type="time" value={time} onChange={setTime}/></div><Input label="Místo" value={place} onChange={setPlace}/><div><label className="mb-2 block text-xs text-slate-400">Popis</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div><div><label className="mb-2 block text-xs text-slate-400">Účastníci</label><div className="flex flex-wrap gap-2">{people.map(p=><button type="button" key={p.id} onClick={()=>setParticipants(prev=>prev.includes(p.id)?prev.filter(x=>x!==p.id):[...prev,p.id])} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs" style={participants.includes(p.id)?{borderColor:`${p.color}60`,background:`${p.color}10`}:{borderColor:"rgba(255,255,255,.06)"}}><Avatar person={p} size={22}/>{p.name}</button>)}</div></div></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} disabled={saving} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs text-slate-400 disabled:opacity-50">Zrušit</button><button type="button" onClick={submit} disabled={saving||!title.trim()||!date} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110 disabled:opacity-50">{saving?"Vytvářím…":"Vytvořit"}</button></div></Modal>
+}
 
 function PracticeModal({onClose,onSave}:{onClose:()=>void;onSave:(p:PracticeItem)=>void}){const[date,setDate]=useState("");const[start,setStart]=useState("07:00");const[end,setEnd]=useState("14:00");const[note,setNote]=useState("");return <Modal onClose={onClose}><div className="flex items-center gap-2"><Icon name="briefcase"/><h2 className="font-bold">Přidat Davčův praxi</h2></div><div className="mt-5 space-y-4"><Input label="Datum" type="date" value={date} onChange={setDate}/><div className="grid grid-cols-2 gap-3"><Input label="Od" type="time" value={start} onChange={setStart}/><Input label="Do" type="time" value={end} onChange={setEnd}/></div><Input label="Poznámka" value={note} onChange={setNote}/></div><div className="mt-6 flex justify-end gap-2"><button onClick={onClose} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs text-slate-400">Zrušit</button><button onClick={()=>{if(date)onSave({id:crypto.randomUUID(),date,startTime:start,endTime:end,note})}} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110">Uložit</button></div></Modal>}
 
