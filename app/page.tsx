@@ -416,11 +416,35 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
-    fetch("https://svatkyapi.cz/api/day")
-      .then(r => r.ok ? r.json() : Promise.reject(new Error("Svátek se nepodařilo načíst")))
-      .then(data => { if (active) setNameDay(data?.name || ""); })
-      .catch(() => { if (active) setNameDay(""); });
-    return () => { active = false; };
+
+    const loadNameDay = async () => {
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+      try {
+        const response = await fetch(`https://svatkyapi.cz/api/day/${today}`, {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Svátek se nepodařilo načíst");
+        }
+
+        const data = await response.json();
+        if (active) setNameDay(data?.name || "");
+      } catch (error) {
+        console.error("Chyba při načítání svátku:", error);
+        if (active) setNameDay("");
+      }
+    };
+
+    loadNameDay();
+    const interval = setInterval(loadNameDay, 60 * 60 * 1000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const login = async () => {
