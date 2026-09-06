@@ -22,6 +22,7 @@ type Shift = {
   id: string;
   userId: string;
   date: string;
+  endDate?: string | null;
   type: ShiftType;
   startTime: string;
   endTime: string;
@@ -53,6 +54,12 @@ type WeekSchedule = Record<string, Lesson[]>;
 const APP_ACCENT = "#6d5dfc";
 const APP_ACCENT_SECONDARY = "#8b5cf6";
 const DAVID_AUTH_ID = "0989a80c-eaec-425b-a9e9-6ff0173c678d";
+
+// Doplňková česká jména, která základní svátkové API nevrací.
+const EXTRA_CZECH_NAME_DAYS: Record<string, string[]> = {
+  "09-03": ["Bronislava"],
+  "09-06": ["Boleslava"],
+};
 
 const loginUsers = [
   { name: "Tibík", email: "08matytibi3115@gmail.com", color: "#22d3ee", avatar: "T" },
@@ -171,6 +178,7 @@ export default function Home() {
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [shiftDate, setShiftDate] = useState("");
+  const [shiftEndDate, setShiftEndDate] = useState("");
   const [shiftType, setShiftType] = useState<ShiftType>("morning");
   const [startTime, setStartTime] = useState("06:00");
   const [endTime, setEndTime] = useState("14:00");
@@ -324,8 +332,8 @@ export default function Home() {
     if (!session) { setShifts([]); return; }
     (async () => {
       setLoadingShifts(true);
-      const { data, error } = await supabase.from("shifts").select("id,user_id,date,start_time,end_time,type,note").order("date", { ascending: true });
-      if (!error) setShifts((data ?? []).map(s => ({ id: s.id, userId: s.user_id, date: s.date, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5) || "", endTime: s.end_time?.slice(0,5) || "", note: s.note })));
+      const { data, error } = await supabase.from("shifts").select("id,user_id,date,end_date,start_time,end_time,type,note").order("date", { ascending: true });
+      if (!error) setShifts((data ?? []).map(s => ({ id: s.id, userId: s.user_id, date: s.date, endDate: s.end_date || null, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5) || "", endTime: s.end_time?.slice(0,5) || "", note: s.note })));
       else console.error(error);
       setLoadingShifts(false);
     })();
@@ -420,18 +428,21 @@ export default function Home() {
     const loadNameDay = async () => {
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const monthDay = today.slice(5);
 
       try {
-        const response = await fetch(`https://svatkyapi.cz/api/day/${today}`, {
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          throw new Error("Svátek se nepodařilo načíst");
-        }
+        const response = await fetch(`https://svatkyapi.cz/api/day/${today}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Svátek se nepodařilo načíst");
 
         const data = await response.json();
-        if (active) setNameDay(data?.name || "");
+        const baseNames = String(data?.name || "")
+          .split(/\s+a\s+|,/)
+          .map((name: string) => name.trim())
+          .filter(Boolean);
+        const extraNames = EXTRA_CZECH_NAME_DAYS[monthDay] ?? [];
+        const names = [...new Set([...baseNames, ...extraNames])];
+
+        if (active) setNameDay(names.join(", "));
       } catch (error) {
         console.error("Chyba při načítání svátku:", error);
         if (active) setNameDay("");
@@ -458,23 +469,38 @@ export default function Home() {
 
   const openAddShift = (date?: string) => {
     if (!currentPerson) return;
-    setEditingShift(null); setShiftDate(date || `${year}-${String(month+1).padStart(2,"0")}-01`); setShiftType("morning"); setStartTime("06:00"); setEndTime("14:00"); setNote(""); setShowShiftModal(true);
+    const selectedDate = date || `${year}-${String(month+1).padStart(2,"0")}-01`;
+    setEditingShift(null); setShiftDate(selectedDate); setShiftEndDate(selectedDate); setShiftType("morning"); setStartTime("06:00"); setEndTime("14:00"); setNote(""); setShowShiftModal(true);
   };
   const openEditShift = (shift: Shift) => {
     if (!currentPerson || shift.userId !== currentPerson.id) return;
-    setEditingShift(shift); setShiftDate(shift.date); setShiftType(shift.type); setStartTime(shift.startTime); setEndTime(shift.endTime); setNote(shift.note || ""); setShowShiftModal(true);
+    setEditingShift(shift); setShiftDate(shift.date); setShiftEndDate(shift.endDate || shift.date); setShiftType(shift.type); setStartTime(shift.startTime); setEndTime(shift.endTime); setNote(shift.note || ""); setShowShiftModal(true);
   };
   const saveShift = async () => {
     if (!currentPerson || !shiftDate) return;
+    if (shiftType === "vacation" && (!shiftEndDate || shiftEndDate < shiftDate)) {
+      alert("Datum konce dovolené musí být stejné nebo pozdější než datum začátku.");
+      return;
+    }
+
     setSavingShift(true);
-    const payload = { user_id: currentPerson.id, date: shiftDate, start_time: startTime, end_time: endTime, type: shiftType, note: note || null };
+    const isVacation = shiftType === "vacation";
+    const payload = {
+      user_id: currentPerson.id,
+      date: shiftDate,
+      end_date: isVacation ? shiftEndDate : null,
+      start_time: isVacation ? "00:00" : startTime,
+      end_time: isVacation ? "23:59" : endTime,
+      type: shiftType,
+      note: note || null
+    };
     const result = editingShift
       ? await supabase.from("shifts").update(payload).eq("id", editingShift.id).select().single()
       : await supabase.from("shifts").upsert(payload, { onConflict: "user_id,date" }).select().single();
     if (result.error) alert(result.error.message);
     else {
       const s = result.data;
-      const mapped: Shift = { id: s.id, userId: s.user_id, date: s.date, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5)||"", endTime: s.end_time?.slice(0,5)||"", note: s.note };
+      const mapped: Shift = { id: s.id, userId: s.user_id, date: s.date, endDate: s.end_date || null, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5)||"", endTime: s.end_time?.slice(0,5)||"", note: s.note };
       setShifts(prev => [...prev.filter(x => x.id !== mapped.id && !(x.userId===mapped.userId && x.date===mapped.date)), mapped].sort((a,b)=>a.date.localeCompare(b.date)));
       setShowShiftModal(false); setEditingShift(null);
     }
@@ -610,12 +636,16 @@ export default function Home() {
     setEvents(prev => prev.filter(item => item.id !== id));
   };
 
-  const getShift = (personId: string, date: string) => shifts.find(s => s.userId===personId && s.date===date);
+  const shiftCoversDate = (shift: Shift, date: string) =>
+    shift.type === "vacation"
+      ? date >= shift.date && date <= (shift.endDate || shift.date)
+      : shift.date === date;
+  const getShift = (personId: string, date: string) => shifts.find(s => s.userId===personId && shiftCoversDate(s, date));
   const changeMonth = (dir: number) => { let m=month+dir,y=year; if(m<0){m=11;y--;} if(m>11){m=0;y++;} setMonth(m);setYear(y); };
 
   const stats = useMemo(() => people.map(person => {
     const ps = shifts.filter(s=>s.userId===person.id);
-    const totalMinutes = ps.reduce((sum,s)=>{ const [sh,sm]=s.startTime.split(":").map(Number), [eh,em]=s.endTime.split(":").map(Number); let a=sh*60+sm,b=eh*60+em; if(b<=a)b+=1440; return sum+(b-a); },0);
+    const totalMinutes = ps.reduce((sum,s)=>{ if(s.type==="vacation"||s.type==="sick")return sum; const [sh,sm]=s.startTime.split(":").map(Number), [eh,em]=s.endTime.split(":").map(Number); let a=sh*60+sm,b=eh*60+em; if(b<=a)b+=1440; return sum+(b-a); },0);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return {
@@ -679,7 +709,7 @@ export default function Home() {
       <span className="animate-bounce drop-shadow-[0_0_12px_rgba(251,191,36,.8)]">🪙</span>
     </button>}
 
-    {showShiftModal && currentPerson && <ShiftModal person={currentPerson} editing={editingShift} date={shiftDate} setDate={setShiftDate} type={shiftType} setType={setShiftType} start={startTime} setStart={setStartTime} end={endTime} setEnd={setEndTime} note={note} setNote={setNote} saving={savingShift} onClose={()=>setShowShiftModal(false)} onSave={saveShift} onDelete={deleteShift} />}
+    {showShiftModal && currentPerson && <ShiftModal person={currentPerson} editing={editingShift} date={shiftDate} setDate={setShiftDate} endDate={shiftEndDate} setEndDate={setShiftEndDate} type={shiftType} setType={setShiftType} start={startTime} setStart={setStartTime} end={endTime} setEnd={setEndTime} note={note} setNote={setNote} saving={savingShift} onClose={()=>setShowShiftModal(false)} onSave={saveShift} onDelete={deleteShift} />}
     {showEventModal && <EventModal people={people} onClose={()=>setShowEventModal(false)} onSave={saveEvent} />}
     {showPracticeModal && currentPerson?.email === "dkudlata9@gmail.com" && <PracticeModal onClose={()=>setShowPracticeModal(false)} onSave={savePractice} />}
   </main>;
@@ -734,9 +764,9 @@ function dailyBoost(person: Person | null) {
 
 function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift, tibiWeek, setTibiWeek, tibiOdd, tibiEven, davidSchool, practice, openPractice, deletePractice }: { people:Person[]; shifts:Shift[]; currentPerson:Person|null; events:EventItem[]; nameDay:string; openAddShift:(date?:string)=>void; tibiWeek:"odd"|"even"; setTibiWeek:(v:"odd"|"even")=>void; tibiOdd:WeekSchedule;tibiEven:WeekSchedule;davidSchool:WeekSchedule;practice:PracticeItem[];openPractice:()=>void;deletePractice:(id:string)=>Promise<void>; }) {
   const today=isoToday(); const upcoming=[...shifts].filter(s=>s.date>=today).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,8);
-  return <div><PageHeader eyebrow="SMĚNOVNÍK" title="Přehled" description="Všechno důležité na jednom místě." action={<div className="flex max-w-[440px] flex-col gap-2"><div className="rounded-2xl border theme-border bg-white/[0.025] px-4 py-3 shadow-[0_12px_30px_rgba(0,0,0,.14)]"><div className="text-[9px] font-bold uppercase tracking-[.18em] text-slate-600">Dnešní povzbuzení</div><div className="mt-1.5 text-sm font-semibold leading-relaxed text-slate-200">{dailyBoost(currentPerson)}</div></div><div className="self-end rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1.5 text-[11px] text-slate-400">🎉 Dnes má svátek <span className="font-semibold text-slate-200">{nameDay || "načítám…"}</span></div></div>}/>
-    <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{people.map(p=>{const s=shifts.find(x=>x.userId===p.id&&x.date===today);return <div key={p.id} className="group relative overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(15,20,34,.94),rgba(7,10,18,.90))] p-5 shadow-[0_18px_50px_rgba(0,0,0,.25)] transition duration-300 hover:-translate-y-1" style={{borderColor:`${p.color}38`,boxShadow:`0 18px 50px rgba(0,0,0,.25), 0 0 28px ${p.color}10`}}><div className="pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full blur-[55px]" style={{background:`${p.color}28`}}/><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div className="min-w-0 flex-1"><div className="text-[15px] font-black tracking-tight">{p.name}</div><div className="mt-1 text-xs" style={{color:p.id===currentPerson?.id?p.color:"#64748b"}}>{p.id===currentPerson?.id?"To jsi ty":"Člen týmu"}</div></div><div className="shrink-0 rounded-xl border border-amber-400/15 bg-amber-400/10 px-2.5 py-1.5 text-xs font-black text-amber-300">🪙 {p.coins ?? 0}</div></div><div className="relative mt-5 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{s?<><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-2 text-lg font-black tracking-tight">{s.startTime} – {s.endTime}</div></>:<><div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div><div className="mt-1 text-xs text-slate-600">Volno</div></>}</div></div>})}</section>
-    <section className="mb-8 grid gap-5 xl:grid-cols-[1.35fr_.65fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-500">Co nás čeká dál</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcoming.map(s=>{const p=people.find(x=>x.id===s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="text-xs text-slate-500">{formatDate(s.date)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-500">{s.startTime} – {s.endTime}</div></div></div>})}</div></Card><Card className="p-6"><h2 className="font-bold">Rychlé informace</h2><p className="mt-1 text-xs text-slate-500">Aktuální stav</p><div className="mt-5 space-y-3"><MiniStat icon="calendar" label="Směn dnes" value={shifts.filter(s=>s.date===today).length}/><MiniStat icon="chart" label="Celkem směn" value={shifts.length}/><MiniStat icon="users" label="Členů" value={people.length}/><MiniStat icon="event" label="Událostí" value={events.length}/></div></Card></section>
+  return <div><PageHeader eyebrow="SMĚNOVNÍK" title="Přehled" description="Všechno důležité na jednom místě." action={<div className="flex max-w-[440px] flex-col gap-2"><div className="rounded-2xl border theme-border bg-white/[0.025] px-4 py-3 shadow-[0_12px_30px_rgba(0,0,0,.14)]"><div className="text-[9px] font-bold uppercase tracking-[.18em] text-slate-600">Dnešní povzbuzení</div><div className="mt-1.5 text-sm font-semibold leading-relaxed text-slate-200">{dailyBoost(currentPerson)}</div></div><div className="self-end rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1.5 text-[11px] text-slate-400">🎉 Dnes {nameDay.includes(",") ? "mají" : "má"} svátek <span className="font-semibold text-slate-200">{nameDay || "načítám…"}</span></div></div>}/>
+    <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{people.map(p=>{const s=shifts.find(x=>x.userId===p.id&&(x.type==="vacation"?today>=x.date&&today<=(x.endDate||x.date):x.date===today));return <div key={p.id} className="group relative overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(15,20,34,.94),rgba(7,10,18,.90))] p-5 shadow-[0_18px_50px_rgba(0,0,0,.25)] transition duration-300 hover:-translate-y-1" style={{borderColor:`${p.color}38`,boxShadow:`0 18px 50px rgba(0,0,0,.25), 0 0 28px ${p.color}10`}}><div className="pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full blur-[55px]" style={{background:`${p.color}28`}}/><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div className="min-w-0 flex-1"><div className="text-[15px] font-black tracking-tight">{p.name}</div><div className="mt-1 text-xs" style={{color:p.id===currentPerson?.id?p.color:"#64748b"}}>{p.id===currentPerson?.id?"To jsi ty":"Člen týmu"}</div></div><div className="shrink-0 rounded-xl border border-amber-400/15 bg-amber-400/10 px-2.5 py-1.5 text-xs font-black text-amber-300">🪙 {p.coins ?? 0}</div></div><div className="relative mt-5 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{s?<><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-2 text-lg font-black tracking-tight">{s.startTime} – {s.endTime}</div></>:<><div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div><div className="mt-1 text-xs text-slate-600">Volno</div></>}</div></div>})}</section>
+    <section className="mb-8 grid gap-5 xl:grid-cols-[1.35fr_.65fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-500">Co nás čeká dál</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcoming.map(s=>{const p=people.find(x=>x.id===s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="text-xs text-slate-500">{formatDate(s.date)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-500">{s.startTime} – {s.endTime}</div></div></div>})}</div></Card><Card className="p-6"><h2 className="font-bold">Rychlé informace</h2><p className="mt-1 text-xs text-slate-500">Aktuální stav</p><div className="mt-5 space-y-3"><MiniStat icon="calendar" label="Směn dnes" value={shifts.filter(s=>s.type==="vacation"?today>=s.date&&today<=(s.endDate||s.date):s.date===today).length}/><MiniStat icon="chart" label="Celkem směn" value={shifts.length}/><MiniStat icon="users" label="Členů" value={people.length}/><MiniStat icon="event" label="Událostí" value={events.length}/></div></Card></section>
     <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy zůstávají jen v Přehledu a nemění barvu celého webu.</p></div><div className="grid gap-5 xl:grid-cols-2"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden</SmallToggle></div>}/><SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool}/></div><Card className="mt-5 p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase"/></div><div><h3 className="font-bold">Davčův praxe</h3><p className="text-xs text-slate-500">Samostatný přehled praxe pouze tady.</p></div></div>{currentPerson?.email==="dkudlata9@gmail.com"?<button onClick={openPractice} className="flex items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.04]"><Icon name="plus" size={14}/>Přidat praxi</button>:<div className="flex items-center gap-2 text-[11px] text-slate-600"><Icon name="lock" size={13}/>Praxi upravuje pouze Davča</div>}</div>{practice.length===0?<Empty text="Zatím není zapsaná žádná praxe."/>:<div className="grid gap-2 md:grid-cols-2">{practice.map(p=><div key={p.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-4"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase" size={17}/></div><div className="flex-1"><div className="text-sm font-semibold">{formatDate(p.date)}</div><div className="text-xs text-slate-500">{p.startTime} – {p.endTime}{p.note?` · ${p.note}`:""}</div></div>{currentPerson?.email==="dkudlata9@gmail.com"&&<button onClick={()=>deletePractice(p.id)} className="text-xs text-slate-600 hover:text-red-400">Smazat</button>}</div>)}</div>}</Card></section>
   </div>;
 }
@@ -789,7 +819,7 @@ function ShiftsPage({people,currentPerson,selectedPerson,setSelectedPerson,month
   borderLeft:`3px solid ${shiftInfo[s.type].color}`,
   boxShadow:`inset 0 0 22px ${shiftInfo[s.type].color}20, 0 6px 20px ${shiftInfo[s.type].color}18`,
   cursor:editable?"pointer":"default"
-}}><div className="truncate">{p.name}</div><div className="opacity-70">{s.startTime}–{s.endTime}</div></div>})}</div></div>})}</div></Card></div></div><div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 text-xs text-slate-500"><Icon name="lock" size={15}/>{loading?"Načítám směny…":"Upravovat můžeš pouze svoje směny. Směny ostatních jsou pouze k zobrazení."}</div></div>;
+}}><div className="truncate">{p.name}</div><div className="opacity-70">{s.type==="vacation"?`Dovolená do ${new Date(`${s.endDate||s.date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})}`:`${s.startTime}–${s.endTime}`}</div></div>})}</div></div>})}</div></Card></div></div><div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 text-xs text-slate-500"><Icon name="lock" size={15}/>{loading?"Načítám směny…":"Upravovat můžeš pouze svoje směny. Směny ostatních jsou pouze k zobrazení."}</div></div>;
 }
 
 function FilterButton({active,onClick,label,color,icon}:{active:boolean;onClick:()=>void;label:string;color?:string;icon?:string}){
@@ -884,7 +914,7 @@ function SettingsPage({currentPerson,setPeople,themeColor,setThemeColor,themeCol
 }
 function PasswordInput({label,value,onChange}:{label:string;value:string;onChange:(v:string)=>void}){return <div><label className="mb-2 block text-xs text-slate-400">{label}</label><input type="password" value={value} onChange={e=>onChange(e.target.value)} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-indigo-400/50 focus:ring-2 focus:ring-indigo-500/10"/></div>}
 
-function ShiftModal({person,editing,date,setDate,type,setType,start,setStart,end,setEnd,note,setNote,saving,onClose,onSave,onDelete}:{person:Person;editing:Shift|null;date:string;setDate:(v:string)=>void;type:ShiftType;setType:(v:ShiftType)=>void;start:string;setStart:(v:string)=>void;end:string;setEnd:(v:string)=>void;note:string;setNote:(v:string)=>void;saving:boolean;onClose:()=>void;onSave:()=>void;onDelete:()=>void}){return <Modal onClose={onClose}><div className="flex items-center gap-3"><Avatar person={person} size={44}/><div><h2 className="font-bold">{editing?"Upravit směnu":"Přidat směnu"}</h2><p className="text-xs text-slate-500">{person.name}</p></div></div><div className="mt-5 space-y-4"><Input label="Datum" type="date" value={date} onChange={setDate}/><div><label className="mb-2 block text-xs text-slate-400">Typ směny</label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{(Object.keys(shiftInfo) as ShiftType[]).map(t=><button key={t} onClick={()=>{setType(t);if(t==="all_day"){setStart("00:00");setEnd("23:59");}else if(t==="intershift"){setStart("10:00");setEnd("18:00");}else if(t==="midnight"){setStart("00:00");setEnd("08:00");}}} className="flex items-center gap-2 rounded-xl border p-3 text-xs font-semibold" style={type===t?{borderColor:`${shiftInfo[t].color}70`,background:`${shiftInfo[t].color}12`,color:shiftInfo[t].color}:{borderColor:"rgba(255,255,255,.06)",color:"#94a3b8"}}><Icon name={shiftInfo[t].icon} size={15}/>{shiftInfo[t].short}</button>)}</div></div><div className="grid grid-cols-2 gap-3"><Input label="Od" type="time" value={start} onChange={setStart}/><Input label="Do" type="time" value={end} onChange={setEnd}/></div><div><label className="mb-2 block text-xs text-slate-400">Poznámka</label><textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div></div><div className="mt-6 flex gap-2">{editing&&<button onClick={onDelete} className="rounded-xl border border-red-500/20 px-4 py-3 text-xs font-semibold text-red-400">Smazat</button>}<button onClick={onClose} className="ml-auto rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-400">Zrušit</button><button onClick={onSave} disabled={saving} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110 disabled:opacity-50">{saving?"Ukládám…":"Uložit"}</button></div></Modal>}
+function ShiftModal({person,editing,date,setDate,endDate,setEndDate,type,setType,start,setStart,end,setEnd,note,setNote,saving,onClose,onSave,onDelete}:{person:Person;editing:Shift|null;date:string;setDate:(v:string)=>void;endDate:string;setEndDate:(v:string)=>void;type:ShiftType;setType:(v:ShiftType)=>void;start:string;setStart:(v:string)=>void;end:string;setEnd:(v:string)=>void;note:string;setNote:(v:string)=>void;saving:boolean;onClose:()=>void;onSave:()=>void;onDelete:()=>void}){return <Modal onClose={onClose}><div className="flex items-center gap-3"><Avatar person={person} size={44}/><div><h2 className="font-bold">{editing?"Upravit směnu":"Přidat směnu"}</h2><p className="text-xs text-slate-500">{person.name}</p></div></div><div className="mt-5 space-y-4"><div><label className="mb-2 block text-xs text-slate-400">{type==="vacation"?"Datum od":"Datum"}</label><input type="date" value={date} onChange={e=>{const value=e.target.value;setDate(value);if(type==="vacation"&&(!endDate||endDate<value))setEndDate(value);}} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-indigo-400/50 focus:ring-2 focus:ring-indigo-500/10"/></div><div><label className="mb-2 block text-xs text-slate-400">Typ směny</label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{(Object.keys(shiftInfo) as ShiftType[]).map(t=><button key={t} onClick={()=>{setType(t);if(t==="vacation"){setEndDate(endDate||date);setStart("00:00");setEnd("23:59");}else if(t==="all_day"){setStart("00:00");setEnd("23:59");}else if(t==="intershift"){setStart("10:00");setEnd("18:00");}else if(t==="midnight"){setStart("00:00");setEnd("08:00");}}} className="flex items-center gap-2 rounded-xl border p-3 text-xs font-semibold" style={type===t?{borderColor:`${shiftInfo[t].color}70`,background:`${shiftInfo[t].color}12`,color:shiftInfo[t].color}:{borderColor:"rgba(255,255,255,.06)",color:"#94a3b8"}}><Icon name={shiftInfo[t].icon} size={15}/>{shiftInfo[t].short}</button>)}</div></div>{type==="vacation"?<Input label="Datum do" type="date" value={endDate} onChange={setEndDate}/>:<div className="grid grid-cols-2 gap-3"><Input label="Od" type="time" value={start} onChange={setStart}/><Input label="Do" type="time" value={end} onChange={setEnd}/></div>}<div><label className="mb-2 block text-xs text-slate-400">Poznámka</label><textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div></div><div className="mt-6 flex gap-2">{editing&&<button onClick={onDelete} className="rounded-xl border border-red-500/20 px-4 py-3 text-xs font-semibold text-red-400">Smazat</button>}<button onClick={onClose} className="ml-auto rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-400">Zrušit</button><button onClick={onSave} disabled={saving} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110 disabled:opacity-50">{saving?"Ukládám…":"Uložit"}</button></div></Modal>}
 
 function EventModal({people,onClose,onSave}:{people:Person[];onClose:()=>void;onSave:(e:EventItem)=>Promise<void>}){
   const[title,setTitle]=useState("");
