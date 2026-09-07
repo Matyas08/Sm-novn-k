@@ -75,7 +75,7 @@ const shiftInfo: Record<ShiftType, { label: string; short: string; color: string
   night: { label: "Noční směna", short: "Noční", color: "#a78bfa", icon: "moon" },
   midnight: { label: "Polonoc směna", short: "Polonoc", color: "#f472b6", icon: "moon" },
   all_day: { label: "Celodenní směna", short: "Celodenní", color: "#34d399", icon: "clock" },
-  emergency: { label: "Mimořádná směna", short: "Mimořádná", color: "#ef4444", icon: "alert" },
+  emergency: { label: "Mimořádná směna", short: "Mimořádná Směna", color: "#ef4444", icon: "alert" },
   vacation: { label: "Dovolená", short: "Dovolená", color: "#38bdf8", icon: "plane" },
   sick: { label: "Nemoc", short: "Nemoc", color: "#94a3b8", icon: "heart" },
 };
