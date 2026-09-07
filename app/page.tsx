@@ -81,6 +81,7 @@ const shiftInfo: Record<ShiftType, { label: string; short: string; color: string
 
 
 const SCHOOL_PERIODS = [
+  { number: 0, start: "07:00", end: "07:45" },
   { number: 1, start: "07:50", end: "08:35" },
   { number: 2, start: "08:40", end: "09:25" },
   { number: 3, start: "09:40", end: "10:25" },
@@ -111,8 +112,8 @@ function shortSubject(subject: string) {
   return SUBJECT_SHORT[subject] ?? subject;
 }
 
-const blank7 = (): Lesson[] => Array.from({ length: 7 }, () => ({ subject: "—" }));
-const makeWeek = (): WeekSchedule => ({ Po: blank7(), Út: blank7(), St: blank7(), Čt: blank7(), Pá: blank7() });
+const blank8 = (): Lesson[] => Array.from({ length: 8 }, () => ({ subject: "—" }));
+const makeWeek = (): WeekSchedule => ({ Po: blank8(), Út: blank8(), St: blank8(), Čt: blank8(), Pá: blank8() });
 
 function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const common = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -188,8 +189,40 @@ export default function Home() {
   const [showEventModal, setShowEventModal] = useState(false);
   const [statsPersonId, setStatsPersonId] = useState<string | null>(null);
   const [tibiWeek, setTibiWeek] = useState<"odd" | "even">("odd");
-  const [tibiOdd] = useState<WeekSchedule>(() => makeWeek());
-  const [tibiEven] = useState<WeekSchedule>(() => makeWeek());
+  const [tibiOdd] = useState<WeekSchedule>(() => ({
+    Po: [
+      { subject: "—" }, { subject: "Anglický jazyk" }, { subject: "Technologie" }, { subject: "Anglický jazyk" }, { subject: "Potraviny a výživa" }, { subject: "Informatika" }, { subject: "Český jazyk a literatura" }, { subject: "Matematika" },
+    ],
+    Út: [
+      { subject: "Ekonomika" }, { subject: "Matematika" }, { subject: "Základy společenských věd" }, { subject: "Český jazyk a literatura" }, { subject: "Tělesná výchova" }, { subject: "Tělesná výchova" }, { subject: "Anglický jazyk" }, { subject: "Německý jazyk" },
+    ],
+    St: [
+      { subject: "—" }, { subject: "Ekonomika" }, { subject: "Český jazyk a literatura" }, { subject: "Technologie" }, { subject: "Základy společenských věd" }, { subject: "Český jazyk a literatura" }, { subject: "Matematika" }, { subject: "—" },
+    ],
+    Čt: [
+      { subject: "—" }, { subject: "Informatika" }, { subject: "Ekonomika" }, { subject: "Německý jazyk" }, { subject: "Základy společenských věd" }, { subject: "Anglický jazyk" }, { subject: "Anglický jazyk" }, { subject: "—" },
+    ],
+    Pá: [
+      { subject: "—" }, { subject: "Matematika" }, { subject: "Tělesná výchova" }, { subject: "Anglický jazyk" }, { subject: "Praxe" }, { subject: "Praxe" }, { subject: "Praxe" }, { subject: "Praxe" },
+    ],
+  }));
+  const [tibiEven] = useState<WeekSchedule>(() => ({
+    Po: [
+      { subject: "—" }, { subject: "Anglický jazyk" }, { subject: "Technologie" }, { subject: "Anglický jazyk" }, { subject: "Informatika" }, { subject: "Informatika" }, { subject: "Český jazyk a literatura" }, { subject: "Matematika" },
+    ],
+    Út: [
+      { subject: "—" }, { subject: "Matematika" }, { subject: "Základy společenských věd" }, { subject: "Český jazyk a literatura" }, { subject: "Tělesná výchova" }, { subject: "Tělesná výchova" }, { subject: "Anglický jazyk" }, { subject: "Německý jazyk" },
+    ],
+    St: [
+      { subject: "—" }, { subject: "Ekonomika" }, { subject: "Český jazyk a literatura" }, { subject: "Technologie" }, { subject: "Základy společenských věd" }, { subject: "Český jazyk a literatura" }, { subject: "Matematika" }, { subject: "—" },
+    ],
+    Čt: [
+      { subject: "—" }, { subject: "Informatika" }, { subject: "Ekonomika" }, { subject: "Německý jazyk" }, { subject: "Základy společenských věd" }, { subject: "Anglický jazyk" }, { subject: "Anglický jazyk" }, { subject: "—" },
+    ],
+    Pá: [
+      { subject: "—" }, { subject: "Matematika" }, { subject: "Tělesná výchova" }, { subject: "Anglický jazyk" }, { subject: "Praxe" }, { subject: "Praxe" }, { subject: "Praxe" }, { subject: "Praxe" },
+    ],
+  }));
   const [davidSchool] = useState<WeekSchedule>(() => ({
     Po: [
       { subject: "Anglický jazyk", room: "343" },
@@ -779,10 +812,10 @@ function SchoolSchedule({title,person,schedule,switcher}:{title:string;person?:P
   return <div className="relative overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(15,20,34,.92),rgba(7,10,18,.88))] p-4 shadow-[0_18px_50px_rgba(0,0,0,.22)]" style={{borderColor:person?`${person.color}26`:"rgba(255,255,255,.08)"}}>
     {person&&<div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full blur-[65px]" style={{background:`${person.color}1f`}}/>}
     <div className="relative flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-      <div className="flex items-center gap-3">{person&&<Avatar person={person} size={40}/>}<div><div className="font-bold">{title}</div><div className="text-[11px] text-slate-500">7 vyučovacích hodin každý den</div></div></div>{switcher}
+      <div className="flex items-center gap-3">{person&&<Avatar person={person} size={40}/>}<div><div className="font-bold">{title}</div><div className="text-[11px] text-slate-500">0.–7. vyučovací hodina</div></div></div>{switcher}
     </div>
     <div className="relative mt-4 w-full">
-      <div className="grid w-full grid-cols-[34px_repeat(7,minmax(0,1fr))] gap-1">
+      <div className="grid w-full grid-cols-[34px_repeat(8,minmax(0,1fr))] gap-1">
         <div/>
         {SCHOOL_PERIODS.map(period=><div key={period.number} title={`${period.number}. hodina · ${period.start}–${period.end}`} className="min-w-0 text-center leading-tight">
           <div className="text-[11px] font-extrabold text-slate-400 sm:text-xs">{period.number}.</div>
@@ -791,7 +824,7 @@ function SchoolSchedule({title,person,schedule,switcher}:{title:string;person?:P
         </div>)}
         {Object.entries(schedule).map(([day,lessons])=><div key={day} className="contents">
           <div className="flex items-center text-[10px] font-bold text-slate-400">{day}</div>
-          {lessons.slice(0,7).map((l,i)=>{const period=SCHOOL_PERIODS[i]; const time=period?`${period.start}–${period.end}`:""; return <div key={`${day}-${i}`} title={`${l.subject}${l.room?` · ${l.room}`:""}${time?` · ${time}`:""}`} className="min-w-0 rounded-xl border border-white/[0.05] bg-white/[0.03] px-1.5 py-2.5 text-center text-[10px] text-slate-300 transition hover:bg-white/[0.06] sm:text-[11px]">
+          {lessons.slice(0,8).map((l,i)=>{const period=SCHOOL_PERIODS[i]; const time=period?`${period.start}–${period.end}`:""; return <div key={`${day}-${i}`} title={`${l.subject}${l.room?` · ${l.room}`:""}${time?` · ${time}`:""}`} className="min-w-0 rounded-xl border border-white/[0.05] bg-white/[0.03] px-1.5 py-2.5 text-center text-[10px] text-slate-300 transition hover:bg-white/[0.06] sm:text-[11px]">
             <div className="truncate font-bold text-slate-300">{shortSubject(l.subject)}</div>
             {l.subject!=="—"&&period&&<div className="mt-1 truncate text-[8px] font-medium text-slate-600 sm:text-[9px]">{period.start}–{period.end}</div>}
           </div>})}
