@@ -192,41 +192,22 @@ export default function Home() {
   const [statsPersonId, setStatsPersonId] = useState<string | null>(null);
   const [tibiWeek, setTibiWeek] = useState<"odd" | "even">("odd");
   const [tibiOdd] = useState<WeekSchedule>(() => ({
-    Po: [
-      { subject: "—" }, { subject: "Anglický jazyk" }, { subject: "Technologie" }, { subject: "Anglický jazyk" }, { subject: "Potraviny a výživa" }, { subject: "Informatika" }, { subject: "Český jazyk a literatura" }, { subject: "Matematika" },
-    ],
-    Út: [
-      { subject: "Ekonomika" }, { subject: "Matematika" }, { subject: "Základy společenských věd" }, { subject: "Český jazyk a literatura" }, { subject: "Tělesná výchova" }, { subject: "Tělesná výchova" }, { subject: "Anglický jazyk" }, { subject: "Německý jazyk" },
-    ],
-    St: [
-      { subject: "—" }, { subject: "Ekonomika" }, { subject: "Český jazyk a literatura" }, { subject: "Technologie" }, { subject: "Základy společenských věd" }, { subject: "Český jazyk a literatura" }, { subject: "Matematika" }, { subject: "—" },
-    ],
-    Čt: [
-      { subject: "—" }, { subject: "Informatika" }, { subject: "Ekonomika" }, { subject: "Německý jazyk" }, { subject: "Základy společenských věd" }, { subject: "Anglický jazyk" }, { subject: "Anglický jazyk" }, { subject: "—" },
-    ],
-    Pá: [
-      { subject: "—" }, { subject: "Matematika" }, { subject: "Tělesná výchova" }, { subject: "Anglický jazyk" }, { subject: "Praxe" }, { subject: "Praxe" }, { subject: "Praxe" }, { subject: "Praxe" },
-    ],
+    Po: [{ subject: "—" }, { subject: "MAT" }, { subject: "ČJ" }, { subject: "ICT" }, { subject: "SAZ" }, { subject: "AJ" }, { subject: "AEI" }, { subject: "—" }],
+    Út: [{ subject: "EK" }, { subject: "AEI" }, { subject: "MV" }, { subject: "AJ" }, { subject: "TV" }, { subject: "TV" }, { subject: "ČJ" }, { subject: "E" }],
+    St: [{ subject: "—" }, { subject: "—" }, { subject: "EIM" }, { subject: "TEOV" }, { subject: "AJ" }, { subject: "SAZ" }, { subject: "ČJ / M" }, { subject: "M / ČJ" }],
+    Čt: [{ subject: "—" }, { subject: "MV" }, { subject: "AJ" }, { subject: "M" }, { subject: "SAZ" }, { subject: "TEOV" }, { subject: "F" }, { subject: "—" }],
+    Pá: [{ subject: "—" }, { subject: "ČJ" }, { subject: "M" }, { subject: "TEOV" }, { subject: "PŘES->" }, { subject: "PRAXE" }, { subject: "PRAXE" }, { subject: "PRAXE" }],
   }));
   const [tibiEven] = useState<WeekSchedule>(() => ({
-    Po: [
-      { subject: "—" }, { subject: "Anglický jazyk" }, { subject: "Technologie" }, { subject: "Anglický jazyk" }, { subject: "Informatika" }, { subject: "Informatika" }, { subject: "Český jazyk a literatura" }, { subject: "Matematika" },
-    ],
-    Út: [
-      { subject: "—" }, { subject: "Matematika" }, { subject: "Základy společenských věd" }, { subject: "Český jazyk a literatura" }, { subject: "Tělesná výchova" }, { subject: "Tělesná výchova" }, { subject: "Anglický jazyk" }, { subject: "Německý jazyk" },
-    ],
-    St: [
-      { subject: "—" }, { subject: "Ekonomika" }, { subject: "Český jazyk a literatura" }, { subject: "Technologie" }, { subject: "Základy společenských věd" }, { subject: "Český jazyk a literatura" }, { subject: "Matematika" }, { subject: "—" },
-    ],
-    Čt: [
-      { subject: "—" }, { subject: "Informatika" }, { subject: "Ekonomika" }, { subject: "Německý jazyk" }, { subject: "Základy společenských věd" }, { subject: "Anglický jazyk" }, { subject: "Anglický jazyk" }, { subject: "—" },
-    ],
-    Pá: [
-      { subject: "—" }, { subject: "Matematika" }, { subject: "Tělesná výchova" }, { subject: "Anglický jazyk" }, { subject: "Praxe" }, { subject: "Praxe" }, { subject: "Praxe" }, { subject: "Praxe" },
-    ],
+    Po: [{ subject: "—" }, { subject: "AJ" }, { subject: "TEOV" }, { subject: "AEI" }, { subject: "F" }, { subject: "ICT" }, { subject: "ČJ" }, { subject: "M" }],
+    Út: [{ subject: "—" }, { subject: "M" }, { subject: "SAZ" }, { subject: "ČJ" }, { subject: "TV" }, { subject: "TV" }, { subject: "AJ" }, { subject: "MV" }],
+    St: [{ subject: "—" }, { subject: "E" }, { subject: "ČJ" }, { subject: "TEOV" }, { subject: "SAZ" }, { subject: "ČJ / M" }, { subject: "M / ČJ" }, { subject: "—" }],
+    Čt: [{ subject: "—" }, { subject: "EIM" }, { subject: "EK" }, { subject: "MV" }, { subject: "SAZ" }, { subject: "AJ" }, { subject: "AEI" }, { subject: "—" }],
+    Pá: [{ subject: "—" }, { subject: "M" }, { subject: "TEOV" }, { subject: "AJ" }, { subject: "PŘES->" }, { subject: "PRAXE" }, { subject: "PRAXE" }, { subject: "PRAXE" }],
   }));
   const [davidSchool] = useState<WeekSchedule>(() => ({
     Po: [
+      { subject: "—" },
       { subject: "Anglický jazyk", room: "343" },
       { subject: "Tělesná výchova", room: "Tv" },
       { subject: "Tělesná výchova", room: "Tv" },
@@ -236,6 +217,7 @@ export default function Home() {
       { subject: "Český jazyk a literatura", room: "343" },
     ],
     Út: [
+      { subject: "—" },
       { subject: "Stolničení", room: "343" },
       { subject: "Základy přírodních věd", room: "343" },
       { subject: "Matematika", room: "343" },
@@ -245,6 +227,7 @@ export default function Home() {
       { subject: "—" },
     ],
     St: [
+      { subject: "—" },
       { subject: "Německý jazyk", room: "343" },
       { subject: "Stolničení", room: "343" },
       { subject: "Anglický jazyk", room: "343" },
@@ -254,6 +237,7 @@ export default function Home() {
       { subject: "—" },
     ],
     Čt: [
+      { subject: "—" },
       { subject: "Český jazyk a literatura", room: "343" },
       { subject: "Anglický jazyk", room: "343" },
       { subject: "Stolničení", room: "343" },
@@ -263,6 +247,7 @@ export default function Home() {
       { subject: "Matematika", room: "343" },
     ],
     Pá: [
+      { subject: "—" },
       { subject: "Anglický jazyk", room: "343" },
       { subject: "Český jazyk a literatura", room: "343" },
       { subject: "Základy společenských věd", room: "343" },
@@ -820,7 +805,7 @@ function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift
       })}
     </section>
     <section className="mb-8 grid gap-5 xl:grid-cols-[1.35fr_.65fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-500">Co nás čeká dál</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcoming.map(s=>{const p=people.find(x=>x.id===s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="text-xs text-slate-500">{formatDate(s.date)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-500">{s.startTime} – {s.endTime}</div></div></div>})}</div></Card><Card className="p-6"><h2 className="font-bold">Rychlé informace</h2><p className="mt-1 text-xs text-slate-500">Aktuální stav</p><div className="mt-5 space-y-3"><MiniStat icon="calendar" label="Směn dnes" value={shifts.filter(s=>s.type==="vacation"?today>=s.date&&today<=(s.endDate||s.date):s.date===today).length}/><MiniStat icon="chart" label="Celkem směn" value={shifts.length}/><MiniStat icon="users" label="Členů" value={people.length}/><MiniStat icon="event" label="Událostí" value={events.length}/></div></Card></section>
-    <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy zůstávají jen v Přehledu a nemění barvu celého webu.</p></div><div className="grid gap-5 xl:grid-cols-2"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden</SmallToggle></div>}/><SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool}/></div><Card className="mt-5 p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase"/></div><div><h3 className="font-bold">Davčův praxe</h3><p className="text-xs text-slate-500">Samostatný přehled praxe pouze tady.</p></div></div>{currentPerson?.email==="dkudlata9@gmail.com"?<button onClick={openPractice} className="flex items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.04]"><Icon name="plus" size={14}/>Přidat praxi</button>:<div className="flex items-center gap-2 text-[11px] text-slate-600"><Icon name="lock" size={13}/>Praxi upravuje pouze Davča</div>}</div>{practice.length===0?<Empty text="Zatím není zapsaná žádná praxe."/>:<div className="grid gap-2 md:grid-cols-2">{practice.map(p=><div key={p.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-4"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase" size={17}/></div><div className="flex-1"><div className="text-sm font-semibold">{formatDate(p.date)}</div><div className="text-xs text-slate-500">{p.startTime} – {p.endTime}{p.note?` · ${p.note}`:""}</div></div>{currentPerson?.email==="dkudlata9@gmail.com"&&<button onClick={()=>deletePractice(p.id)} className="text-xs text-slate-600 hover:text-red-400">Smazat</button>}</div>)}</div>}</Card></section>
+    <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy zůstávají jen v Přehledu a nemění barvu celého webu.</p></div><div className="grid gap-6"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden</SmallToggle></div>}/><SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool}/></div><Card className="mt-5 p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase"/></div><div><h3 className="font-bold">Davčův praxe</h3><p className="text-xs text-slate-500">Samostatný přehled praxe pouze tady.</p></div></div>{currentPerson?.email==="dkudlata9@gmail.com"?<button onClick={openPractice} className="flex items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.04]"><Icon name="plus" size={14}/>Přidat praxi</button>:<div className="flex items-center gap-2 text-[11px] text-slate-600"><Icon name="lock" size={13}/>Praxi upravuje pouze Davča</div>}</div>{practice.length===0?<Empty text="Zatím není zapsaná žádná praxe."/>:<div className="grid gap-2 md:grid-cols-2">{practice.map(p=><div key={p.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-4"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase" size={17}/></div><div className="flex-1"><div className="text-sm font-semibold">{formatDate(p.date)}</div><div className="text-xs text-slate-500">{p.startTime} – {p.endTime}{p.note?` · ${p.note}`:""}</div></div>{currentPerson?.email==="dkudlata9@gmail.com"&&<button onClick={()=>deletePractice(p.id)} className="text-xs text-slate-600 hover:text-red-400">Smazat</button>}</div>)}</div>}</Card></section>
   </div>;
 }
 
@@ -829,26 +814,27 @@ function Empty({text}:{text:string}){return <div className="rounded-2xl border b
 function SmallToggle({active,onClick,children}:{active:boolean;onClick:()=>void;children:ReactNode}){return <button onClick={onClick} className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${active?"border theme-soft theme-ring":"border border-white/[0.07] text-slate-500 hover:bg-white/[0.03] hover:text-slate-300"}`}>{children}</button>}
 
 function SchoolSchedule({title,person,schedule,switcher}:{title:string;person?:Person;schedule:WeekSchedule;switcher?:ReactNode}){
-  return <div className="relative overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(15,20,34,.92),rgba(7,10,18,.88))] p-4 shadow-[0_18px_50px_rgba(0,0,0,.22)]" style={{borderColor:person?`${person.color}26`:"rgba(255,255,255,.08)"}}>
+  return <div className="relative overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(15,20,34,.92),rgba(7,10,18,.88))] shadow-[0_18px_50px_rgba(0,0,0,.22)]" style={{borderColor:person?`${person.color}26`:"rgba(255,255,255,.08)"}}>
     {person&&<div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full blur-[65px]" style={{background:`${person.color}1f`}}/>}
-    <div className="relative flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-      <div className="flex items-center gap-3">{person&&<Avatar person={person} size={40}/>}<div><div className="font-bold">{title}</div><div className="text-[11px] text-slate-500">0.–7. vyučovací hodina</div></div></div>{switcher}
+    <div className="relative flex flex-col justify-between gap-3 border-b border-white/[0.06] p-5 sm:flex-row sm:items-center sm:p-6">
+      <div className="flex items-center gap-3">{person&&<Avatar person={person} size={42}/>}<div><div className="font-bold">{title}</div><div className="text-[11px] text-slate-500">0.–7. vyučovací hodina</div></div></div>{switcher}
     </div>
-    <div className="relative mt-4 w-full">
-      <div className="grid w-full grid-cols-[34px_repeat(8,minmax(0,1fr))] gap-1">
-        <div/>
-        {SCHOOL_PERIODS.map(period=><div key={period.number} title={`${period.number}. hodina · ${period.start}–${period.end}`} className="min-w-0 text-center leading-tight">
-          <div className="text-[11px] font-extrabold text-slate-400 sm:text-xs">{period.number}.</div>
-          <div className="mt-1 hidden text-[8px] font-semibold text-slate-600 sm:block">{period.start}</div>
-          <div className="hidden text-[8px] font-semibold text-slate-600 sm:block">{period.end}</div>
-        </div>)}
-        {Object.entries(schedule).map(([day,lessons])=><div key={day} className="contents">
-          <div className="flex items-center text-[10px] font-bold text-slate-400">{day}</div>
-          {lessons.slice(0,8).map((l,i)=>{const period=SCHOOL_PERIODS[i]; const time=period?`${period.start}–${period.end}`:""; return <div key={`${day}-${i}`} title={`${l.subject}${l.room?` · ${l.room}`:""}${time?` · ${time}`:""}`} className="min-w-0 rounded-xl border border-white/[0.05] bg-white/[0.03] px-1.5 py-2.5 text-center text-[10px] text-slate-300 transition hover:bg-white/[0.06] sm:text-[11px]">
-            <div className="truncate font-bold text-slate-300">{shortSubject(l.subject)}</div>
-            {l.subject!=="—"&&period&&<div className="mt-1 truncate text-[8px] font-medium text-slate-600 sm:text-[9px]">{period.start}–{period.end}</div>}
-          </div>})}
-        </div>)}
+    <div className="relative overflow-x-auto p-4 sm:p-6">
+      <div className="min-w-[900px]">
+        <div className="grid grid-cols-[58px_repeat(8,minmax(92px,1fr))] gap-1.5">
+          <div/>
+          {SCHOOL_PERIODS.map(period=><div key={period.number} title={`${period.number}. hodina · ${period.start}–${period.end}`} className="text-center leading-tight">
+            <div className="text-xs font-extrabold text-slate-300">{period.number}.</div>
+            <div className="mt-1 text-[9px] font-semibold text-slate-600">{period.start}–{period.end}</div>
+          </div>)}
+          {Object.entries(schedule).map(([day,lessons])=><div key={day} className="contents">
+            <div className="flex min-h-[72px] items-center font-bold text-slate-400">{day}</div>
+            {Array.from({length:8},(_,i)=>lessons[i]??{subject:"—"}).map((l,i)=>{const empty=l.subject==="—"; return <div key={`${day}-${i}`} title={`${l.subject}${l.room?` · ${l.room}`:""}`} className={`flex min-h-[72px] min-w-0 flex-col items-center justify-center rounded-xl border px-2 py-3 text-center transition ${empty?"border-white/[0.035] bg-white/[0.015] text-slate-700":"border-white/[0.06] bg-white/[0.035] text-slate-200 hover:bg-white/[0.06]"}`}>
+              <div className="font-bold">{shortSubject(l.subject)}</div>
+              {l.room&&l.subject!=="—"&&<div className="mt-1 text-[9px] font-medium text-slate-600">uč. {l.room}</div>}
+            </div>})}
+          </div>)}
+        </div>
       </div>
     </div>
   </div>
