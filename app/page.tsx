@@ -14,7 +14,6 @@ type Person = {
   color: string;
   avatar: string;
   authId?: string | null;
-  coins?: number;
   birthday?: string | null;
 };
 
@@ -262,74 +261,11 @@ export default function Home() {
   const [themeColor, setThemeColor] = useState(APP_ACCENT);
   const [themeColor2, setThemeColor2] = useState(APP_ACCENT_SECONDARY);
   const [nameDay, setNameDay] = useState<string>("");
-  const [floatingCoin, setFloatingCoin] = useState<{ id: number; left: number; top: number } | null>(null);
-  const [coinSaving, setCoinSaving] = useState(false);
 
   const currentPerson = useMemo(() => {
     const email = session?.user?.email;
     return email ? people.find(p => p.email.toLowerCase() === email.toLowerCase()) ?? null : null;
   }, [people, session]);
-
-  useEffect(() => {
-    if (!currentPerson) {
-      setFloatingCoin(null);
-      return;
-    }
-
-    let spawnTimer: ReturnType<typeof setTimeout> | undefined;
-    let hideTimer: ReturnType<typeof setTimeout> | undefined;
-    let cancelled = false;
-
-    const scheduleNextCoin = () => {
-      const delay = Math.floor(Math.random() * 5001) + 10000;
-      spawnTimer = setTimeout(() => {
-        if (cancelled) return;
-        setFloatingCoin({
-          id: Date.now(),
-          left: 10 + Math.random() * 80,
-          top: 15 + Math.random() * 65,
-        });
-
-        hideTimer = setTimeout(() => {
-          if (cancelled) return;
-          setFloatingCoin(null);
-          scheduleNextCoin();
-        }, 8000);
-      }, delay);
-    };
-
-    scheduleNextCoin();
-
-    return () => {
-      cancelled = true;
-      if (spawnTimer) clearTimeout(spawnTimer);
-      if (hideTimer) clearTimeout(hideTimer);
-    };
-  }, [currentPerson?.id]);
-
-  const collectFloatingCoin = async () => {
-    if (!currentPerson || !floatingCoin || coinSaving) return;
-
-    setCoinSaving(true);
-    const nextCoins = (currentPerson.coins ?? 0) + 1;
-    const { data, error } = await supabase
-      .from("users")
-      .update({ coins: nextCoins })
-      .eq("id", currentPerson.id)
-      .select("coins")
-      .single();
-
-    if (error) {
-      alert(`Coin se nepodařilo přidat: ${error.message}`);
-      setCoinSaving(false);
-      return;
-    }
-
-    const savedCoins = data?.coins ?? nextCoins;
-    setPeople(prev => prev.map(p => p.id === currentPerson.id ? { ...p, coins: savedCoins } : p));
-    setFloatingCoin(null);
-    setCoinSaving(false);
-  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthLoading(false); });
@@ -340,9 +276,9 @@ export default function Home() {
   useEffect(() => {
     if (!session) { setPeople([]); return; }
     (async () => {
-      const { data, error } = await supabase.from("users").select("id,name,email,color,avatar,auth_id,birthday,coins").order("created_at", { ascending: true });
+      const { data, error } = await supabase.from("users").select("id,name,email,color,avatar,auth_id,birthday").order("created_at", { ascending: true });
       if (error) { console.error(error); return; }
-      const mapped: Person[] = (data ?? []).map(p => ({ id: p.id, name: p.name, email: p.email, color: p.color || loginUsers.find(u=>u.email===p.email)?.color || "#64748b", avatar: p.avatar || p.name?.charAt(0)?.toUpperCase() || "?", authId: p.auth_id, coins: p.coins ?? 0, birthday: p.birthday || null }));
+      const mapped: Person[] = (data ?? []).map(p => ({ id: p.id, name: p.name, email: p.email, color: p.color || loginUsers.find(u=>u.email===p.email)?.color || "#64748b", avatar: p.avatar || p.name?.charAt(0)?.toUpperCase() || "?", authId: p.auth_id, birthday: p.birthday || null }));
       setPeople(mapped);
       setSelectedPerson(null);
     })();
@@ -719,17 +655,6 @@ export default function Home() {
       </section>
     </div>
 
-    {floatingCoin && currentPerson && <button
-      type="button"
-      aria-label="Sebrat coin"
-      disabled={coinSaving}
-      onClick={collectFloatingCoin}
-      className="fixed z-[90] flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-amber-300/50 bg-amber-400/15 text-4xl shadow-[0_0_18px_rgba(251,191,36,.65),0_0_55px_rgba(245,158,11,.28)] backdrop-blur-md transition hover:scale-110 active:scale-90 disabled:opacity-60"
-      style={{ left: `${floatingCoin.left}%`, top: `${floatingCoin.top}%` }}
-    >
-      <span className="animate-bounce drop-shadow-[0_0_12px_rgba(251,191,36,.8)]">🪙</span>
-    </button>}
-
     {showShiftModal && currentPerson && <ShiftModal person={currentPerson} editing={editingShift} date={shiftDate} setDate={setShiftDate} endDate={shiftEndDate} setEndDate={setShiftEndDate} type={shiftType} setType={setShiftType} start={startTime} setStart={setStartTime} end={endTime} setEnd={setEndTime} note={note} setNote={setNote} saving={savingShift} onClose={()=>setShowShiftModal(false)} onSave={saveShift} onDelete={deleteShift} />}
     {showEventModal && <EventModal people={people} onClose={()=>setShowEventModal(false)} onSave={saveEvent} />}
     {showPracticeModal && currentPerson?.email === "dkudlata9@gmail.com" && <PracticeModal onClose={()=>setShowPracticeModal(false)} onSave={savePractice} />}
@@ -796,7 +721,6 @@ function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift
           <div className="relative flex items-center gap-4">
             <Avatar person={p} size={54}/>
             <div className="min-w-0 flex-1"><div className="text-[15px] font-black tracking-tight">{p.name}</div><div className="mt-1 text-xs" style={{color:p.id===currentPerson?.id?p.color:"#64748b"}}>{p.id===currentPerson?.id?"To jsi ty":"Člen týmu"}</div></div>
-            <div className="shrink-0 rounded-xl border border-amber-400/15 bg-amber-400/10 px-2.5 py-1.5 text-xs font-black text-amber-300">🪙 {p.coins ?? 0}</div>
           </div>
           <div className="relative mt-5 rounded-2xl border border-white/[0.05] bg-black/20 p-4">
             {todayShifts.length>0?<div className="space-y-2">{todayShifts.map(s=><div key={s.id} className="rounded-xl border px-3 py-2" style={{borderColor:`${shiftInfo[s.type].color}38`,background:`${shiftInfo[s.type].color}0d`}}><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-base font-black tracking-tight">{s.startTime} – {s.endTime}</div></div>)}</div>:<><div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div><div className="mt-1 text-xs text-slate-600">Volno</div></>}
@@ -930,16 +854,12 @@ function EventsPage({events,people,currentPerson,openCreate,deleteEvent}:{events
 function StatsPage({stats,selectedId,setSelectedId}:{stats:{person:Person;shifts:number;hours:number;minutes:number;totalMinutes:number;morning:number;afternoon:number;intershift:number;night:number;midnight:number;all_day:number;emergency:number;vacation:number;sick:number}[];selectedId:string|null;setSelectedId:(id:string)=>void}){
   const selected=stats.find(s=>s.person.id===selectedId)||stats[0];
   return <div>
-    <PageHeader eyebrow="ČÍSLA" title="Statistiky" description="Směny, hodiny a coinové pořadí všech členů."/>
+    <PageHeader eyebrow="ČÍSLA" title="Statistiky" description="Směny a odpracované hodiny všech členů."/>
     <div className="grid gap-5 xl:grid-cols-[300px_1fr]">
       <Card className="p-4"><div className="space-y-2">{stats.map(s=><button key={s.person.id} onClick={()=>setSelectedId(s.person.id)} className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left transition ${selected?.person.id===s.person.id?"bg-white/[0.07]":"hover:bg-white/[0.03]"}`}><Avatar person={s.person} size={38}/><div><div className="text-sm font-semibold">{s.person.name}</div><div className="text-xs text-slate-500">{s.shifts} směn · {s.hours} h {s.minutes} min</div></div></button>)}</div></Card>
       <div className="space-y-5">
         {selected&&<Card className="p-6"><div className="flex items-center gap-4"><Avatar person={selected.person} size={54}/><div><h2 className="text-xl font-bold">{selected.person.name}</h2><p className="text-sm text-slate-500">Osobní statistiky</p></div></div><div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4"><StatBox label="Směny" value={selected.shifts}/><StatBox label="Čas" value={`${selected.hours} h ${selected.minutes} min`}/><StatBox label="Ranní" value={selected.morning} color={shiftInfo.morning.color}/><StatBox label="Odpolední" value={selected.afternoon} color={shiftInfo.afternoon.color}/><StatBox label="Mezisměna" value={selected.intershift} color={shiftInfo.intershift.color}/><StatBox label="Noční" value={selected.night} color={shiftInfo.night.color}/><StatBox label="Polonoc" value={selected.midnight} color={shiftInfo.midnight.color}/><StatBox label="Celodenní" value={selected.all_day} color={shiftInfo.all_day.color}/><StatBox label="Mimořádná směna" value={selected.emergency} color={shiftInfo.emergency.color}/><StatBox label="Dovolená" value={selected.vacation} color={shiftInfo.vacation.color}/><StatBox label="Nemoc" value={selected.sick} color={shiftInfo.sick.color}/></div></Card>}
         <Card className="p-6"><h2 className="font-bold">Porovnání všech</h2><div className="mt-5 space-y-3">{stats.map(s=><div key={s.person.id} className="flex items-center gap-3"><Avatar person={s.person} size={32}/><div className="w-24 text-sm font-semibold">{s.person.name}</div><div className="h-2 flex-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full" style={{width:`${Math.min(100,(s.totalMinutes/Math.max(1,...stats.map(x=>x.totalMinutes)))*100)}%`,background:`linear-gradient(90deg,${s.person.color},${s.person.color}99)`}}/></div><div className="w-16 text-right text-xs text-slate-500">{s.hours} h {s.minutes} min</div></div>)}</div></Card>
-        <Card className="overflow-hidden">
-          <div className="border-b border-white/[0.06] p-5"><div className="flex items-center gap-2"><span className="text-xl">🪙</span><div><h2 className="font-bold">Coiny</h2><p className="text-xs text-slate-500">Tabulka coinů – samotné sbírání coinů dopojíme následně.</p></div></div></div>
-          <div className="divide-y divide-white/[0.05]">{[...stats].sort((a,b)=>(b.person.coins??0)-(a.person.coins??0)).map((s,index)=><div key={s.person.id} className="flex items-center gap-3 px-5 py-3"><div className="w-7 text-center text-xs font-bold text-slate-500">#{index+1}</div><Avatar person={s.person} size={32}/><div className="flex-1 text-sm font-semibold">{s.person.name}</div><div className="rounded-xl border border-amber-400/15 bg-amber-400/10 px-3 py-1.5 text-sm font-bold text-amber-300">{s.person.coins??0} coinů</div></div>)}</div>
-        </Card>
       </div>
     </div>
   </div>
