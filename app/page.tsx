@@ -323,6 +323,7 @@ export default function Home() {
       setEvents([]);
       return;
     }
+    if (people.length === 0) return;
 
     (async () => {
       const { data, error } = await supabase
@@ -361,7 +362,7 @@ export default function Home() {
 
       setEvents(mapped);
     })();
-  }, [session, people]);
+  }, [session, people.length]);
 
   useEffect(() => { if (currentPerson && !statsPersonId) setStatsPersonId(currentPerson.id); }, [currentPerson, statsPersonId]);
   useEffect(() => {
@@ -592,16 +593,20 @@ export default function Home() {
     setEvents(prev => prev.filter(item => item.id !== id));
   };
 
-  const shiftCoversDate = (shift: Shift, date: string) =>
-    shift.type === "vacation"
-      ? date >= shift.date && date <= (shift.endDate || shift.date)
-      : shift.date === date;
-  const getShifts = (personId: string, date: string) => shifts.filter(s => s.userId===personId && shiftCoversDate(s, date)).sort((a,b)=>a.startTime.localeCompare(b.startTime));
   const changeMonth = (dir: number) => { let m=month+dir,y=year; if(m<0){m=11;y--;} if(m>11){m=0;y++;} setMonth(m);setYear(y); };
 
   const stats = useMemo(() => people.map(person => {
     const ps = shifts.filter(s=>s.userId===person.id);
-    const totalMinutes = ps.reduce((sum,s)=>{ if(s.type==="vacation"||s.type==="sick")return sum; const [sh,sm]=s.startTime.split(":").map(Number), [eh,em]=s.endTime.split(":").map(Number); let a=sh*60+sm,b=eh*60+em; if(b<=a)b+=1440; return sum+(b-a); },0);
+    const counts:Record<ShiftType,number>={morning:0,afternoon:0,intershift:0,night:0,midnight:0,all_day:0,emergency:0,vacation:0,sick:0};
+    let totalMinutes=0;
+    for(const s of ps){
+      counts[s.type]++;
+      if(s.type==="vacation"||s.type==="sick")continue;
+      const [sh,sm]=s.startTime.split(":").map(Number), [eh,em]=s.endTime.split(":").map(Number);
+      let a=sh*60+sm,b=eh*60+em;
+      if(b<=a)b+=1440;
+      totalMinutes+=b-a;
+    }
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return {
@@ -610,15 +615,7 @@ export default function Home() {
       hours,
       minutes,
       totalMinutes,
-      morning: ps.filter(s=>s.type==="morning").length,
-      afternoon: ps.filter(s=>s.type==="afternoon").length,
-      intershift: ps.filter(s=>s.type==="intershift").length,
-      night: ps.filter(s=>s.type==="night").length,
-      midnight: ps.filter(s=>s.type==="midnight").length,
-      all_day: ps.filter(s=>s.type==="all_day").length,
-      emergency: ps.filter(s=>s.type==="emergency").length,
-      vacation: ps.filter(s=>s.type==="vacation").length,
-      sick: ps.filter(s=>s.type==="sick").length
+      ...counts
     };
   }), [people, shifts]);
 
@@ -647,7 +644,7 @@ export default function Home() {
       <section className="w-full lg:ml-[252px]">
         <div className="mx-auto max-w-[1500px] px-4 pb-28 pt-24 sm:px-6 lg:px-10 lg:pb-16 lg:pt-10">
           {activePage === "overview" && <Overview people={people} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} practice={practice} openPractice={()=>setShowPracticeModal(true)} deletePractice={deletePractice} />}
-          {activePage === "shifts" && <ShiftsPage people={people} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} getShifts={getShifts} loading={loadingShifts} />}
+          {activePage === "shifts" && <ShiftsPage people={people} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} loading={loadingShifts} />}
           {activePage === "events" && <EventsPage events={events} people={people} currentPerson={currentPerson} openCreate={()=>setShowEventModal(true)} deleteEvent={deleteEvent} />}
           {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} />}
           {activePage === "settings" && <SettingsPage currentPerson={currentPerson} setPeople={setPeople} themeColor={themeColor} setThemeColor={setThemeColor} themeColor2={themeColor2} setThemeColor2={setThemeColor2} />}
@@ -680,7 +677,7 @@ function Sidebar({ activePage, setActivePage, currentPerson, onLogout }: { activ
 }
 
 function PageHeader({ eyebrow,title,description,action }: { eyebrow:string;title:string;description:string;action?:ReactNode }) { return <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><div className="mb-2 inline-flex rounded-full border theme-soft px-2.5 py-1 text-[9px] font-bold tracking-[.22em]">{eyebrow}</div><h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">{title}</h1><p className="mt-2 text-sm text-slate-400">{description}</p></div>{action}</div>; }
-function Card({children,className=""}:{children:ReactNode;className?:string}){return <div className={`rounded-3xl border border-white/[0.08] bg-[linear-gradient(145deg,rgba(15,20,34,.88),rgba(7,10,18,.82))] shadow-[0_18px_50px_rgba(0,0,0,.22)] backdrop-blur-xl ${className}`}>{children}</div>}
+function Card({children,className=""}:{children:ReactNode;className?:string}){return <div className={`rounded-3xl border border-white/[0.08] bg-[linear-gradient(145deg,rgba(15,20,34,.96),rgba(7,10,18,.94))] shadow-[0_18px_50px_rgba(0,0,0,.22)] ${className}`}>{children}</div>}
 
 function dailyBoost(person: Person | null) {
   const vocative: Record<string,string> = {
@@ -772,18 +769,66 @@ function birthdayAgeOnDate(birthday:string | null | undefined, date:string){
   return targetYear-birthYear;
 }
 
-function ShiftsPage({people,currentPerson,selectedPerson,setSelectedPerson,month,year,changeMonth,filter,setFilter,openAddShift,openEditShift,getShifts,loading}:{people:Person[];shifts:Shift[];currentPerson:Person|null;selectedPerson:Person|null;setSelectedPerson:(p:Person|null)=>void;month:number;year:number;changeMonth:(d:number)=>void;filter:ShiftType|"all";setFilter:(f:ShiftType|"all")=>void;openAddShift:(d?:string)=>void;openEditShift:(s:Shift)=>void;getShifts:(pid:string,d:string)=>Shift[];loading:boolean;}){
+function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerson,month,year,changeMonth,filter,setFilter,openAddShift,openEditShift,loading}:{people:Person[];shifts:Shift[];currentPerson:Person|null;selectedPerson:Person|null;setSelectedPerson:(p:Person|null)=>void;month:number;year:number;changeMonth:(d:number)=>void;filter:ShiftType|"all";setFilter:(f:ShiftType|"all")=>void;openAddShift:(d?:string)=>void;openEditShift:(s:Shift)=>void;loading:boolean;}){
   const [detailShift,setDetailShift]=useState<Shift|null>(null);
-  const cells:(number|null)[]=[]; for(let i=0;i<mondayOffset(year,month);i++)cells.push(null); for(let d=1;d<=daysInMonth(year,month);d++)cells.push(d); const visible=selectedPerson?[selectedPerson]:people;
-  const birthdayPeopleFor=(date:string)=>{const md=date.slice(5);return visible.filter(p=>p.birthday?.slice(5)===md);};
-  return <div><PageHeader eyebrow="KALENDÁŘ" title="Směny" description="Přehled směn všech členů." action={<button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white hover:brightness-110"><Icon name="plus" size={16}/>Přidat směnu</button>}/><div className="mb-5 flex flex-wrap gap-2"><FilterButton active={filter==="all"} onClick={()=>setFilter("all")} label="Všechny"/>{(Object.keys(shiftInfo) as ShiftType[]).map(t=><FilterButton key={t} active={filter===t} onClick={()=>setFilter(t)} label={shiftInfo[t].short} color={shiftInfo[t].color} icon={shiftInfo[t].icon}/>)}</div><div className="mb-5 flex gap-2 overflow-x-auto"><button type="button" onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(null);}} aria-pressed={!selectedPerson} className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${!selectedPerson?"border-white/20 bg-white/[0.10] text-white shadow-[0_8px_22px_rgba(0,0,0,.16)]":"border-white/[0.06] text-slate-500 hover:bg-white/[0.04] hover:text-white"}`}>Všichni</button>{people.map(p=><button type="button" key={p.id} onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(p);}} className="flex items-center gap-2 rounded-xl border border-white/[0.06] px-3 py-2 text-xs transition hover:bg-white/[0.03]" style={selectedPerson?.id===p.id?{borderColor:`${p.color}60`,background:`${p.color}10`}:undefined}><Avatar person={p} size={23}/>{p.name}</button>)}</div><div className="-mx-1 overflow-x-auto pb-2"><div className="min-w-[760px] px-1"><Card className="overflow-hidden"><div className="flex items-center justify-between border-b border-white/[0.06] p-4"><button onClick={()=>changeMonth(-1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="left"/></button><div className="text-center"><div className="text-lg font-bold capitalize">{monthName(year,month)}</div><div className="text-xs text-slate-500">{year}</div></div><button onClick={()=>changeMonth(1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="right"/></button></div><div className="grid grid-cols-7 border-b border-white/[0.06]">{["Po","Út","St","Čt","Pá","So","Ne"].map((d,idx)=><div key={d} className={`p-3 text-center text-[10px] font-bold ${idx>=5?"text-slate-500":"text-slate-600"}`}>{d}</div>)}</div><div className="grid grid-cols-7">{cells.map((day,i)=>{if(!day)return <div key={`e${i}`} className="min-h-[105px] border-b border-r border-white/[0.04] bg-black/10"/>; const date=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`; const isToday=date===isoToday(); const weekend=(i%7)>=5; return <div key={date} onClick={()=>{if(!currentPerson)return;openAddShift(date)}} className={`relative min-h-[105px] cursor-pointer border-b border-r border-white/[0.04] p-2 transition hover:bg-white/[0.035] ${weekend?"bg-white/[0.012]":""}`} style={isToday?{background:"color-mix(in srgb, var(--theme) 7%, transparent)",boxShadow:"inset 0 0 0 1px color-mix(in srgb, var(--theme) 28%, transparent)"}:undefined}><div className={`mb-2 flex h-6 w-6 items-center justify-center rounded-lg text-xs font-semibold ${isToday?"theme-soft":"text-slate-500"}`}>{day}</div>{birthdayPeopleFor(date).length>0&&<div className="mb-1.5 space-y-1">{birthdayPeopleFor(date).map(p=><div key={`birthday-${p.id}`} className="truncate rounded-lg border px-2 py-1 text-[9px] font-bold" style={{borderColor:`${p.color}45`,background:`${p.color}12`,color:p.color}}>🎂 {p.name} — {birthdayAgeOnDate(p.birthday,date)} let</div>)}</div>}<div className="space-y-1">{visible.flatMap(p=>getShifts(p.id,date).filter(s=>filter==="all"||s.type===filter).map(s=>{const editable=currentPerson?.id===p.id;return <div key={s.id} onClick={e=>{e.stopPropagation();setDetailShift(s)}} className="rounded-lg px-2 py-1.5 text-[9px] font-semibold transition hover:brightness-110" style={{
+  const cells=useMemo(() => {
+    const result:(number|null)[]=[];
+    for(let i=0;i<mondayOffset(year,month);i++)result.push(null);
+    for(let d=1;d<=daysInMonth(year,month);d++)result.push(d);
+    return result;
+  },[year,month]);
+  const visible=useMemo(() => selectedPerson?[selectedPerson]:people,[selectedPerson,people]);
+  const visibleIds=useMemo(() => new Set(visible.map(person=>person.id)),[visible]);
+  const birthdaysByMonthDay=useMemo(() => {
+    const result=new Map<string,Person[]>();
+    for(const person of visible){
+      const monthDay=person.birthday?.slice(5);
+      if(!monthDay)continue;
+      const list=result.get(monthDay) ?? [];
+      list.push(person);
+      result.set(monthDay,list);
+    }
+    return result;
+  },[visible]);
+  const shiftsByDate=useMemo(() => {
+    const result=new Map<string,Shift[]>();
+    const monthStart=`${year}-${String(month+1).padStart(2,"0")}-01`;
+    const monthEnd=`${year}-${String(month+1).padStart(2,"0")}-${String(daysInMonth(year,month)).padStart(2,"0")}`;
+    const add=(date:string,shift:Shift)=>{
+      const list=result.get(date) ?? [];
+      list.push(shift);
+      result.set(date,list);
+    };
+    for(const shift of shifts){
+      if(!visibleIds.has(shift.userId)||(filter!=="all"&&shift.type!==filter))continue;
+      if(shift.type!=="vacation"){
+        if(shift.date>=monthStart&&shift.date<=monthEnd)add(shift.date,shift);
+        continue;
+      }
+      const start=shift.date>monthStart?shift.date:monthStart;
+      const end=(shift.endDate||shift.date)<monthEnd?(shift.endDate||shift.date):monthEnd;
+      if(start>end)continue;
+      const cursor=new Date(`${start}T12:00:00`);
+      const last=new Date(`${end}T12:00:00`);
+      while(cursor<=last){
+        const date=`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`;
+        add(date,shift);
+        cursor.setDate(cursor.getDate()+1);
+      }
+    }
+    for(const list of result.values())list.sort((a,b)=>a.startTime.localeCompare(b.startTime));
+    return result;
+  },[shifts,visibleIds,filter,year,month]);
+  const peopleById=useMemo(() => new Map(people.map(person=>[person.id,person])),[people]);
+  const today=isoToday();
+  return <div><PageHeader eyebrow="KALENDÁŘ" title="Směny" description="Přehled směn všech členů." action={<button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white hover:brightness-110"><Icon name="plus" size={16}/>Přidat směnu</button>}/><div className="mb-5 flex flex-wrap gap-2"><FilterButton active={filter==="all"} onClick={()=>setFilter("all")} label="Všechny"/>{(Object.keys(shiftInfo) as ShiftType[]).map(t=><FilterButton key={t} active={filter===t} onClick={()=>setFilter(t)} label={shiftInfo[t].short} color={shiftInfo[t].color} icon={shiftInfo[t].icon}/>)}</div><div className="mb-5 flex gap-2 overflow-x-auto"><button type="button" onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(null);}} aria-pressed={!selectedPerson} className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${!selectedPerson?"border-white/20 bg-white/[0.10] text-white shadow-[0_8px_22px_rgba(0,0,0,.16)]":"border-white/[0.06] text-slate-500 hover:bg-white/[0.04] hover:text-white"}`}>Všichni</button>{people.map(p=><button type="button" key={p.id} onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(p);}} className="flex items-center gap-2 rounded-xl border border-white/[0.06] px-3 py-2 text-xs transition hover:bg-white/[0.03]" style={selectedPerson?.id===p.id?{borderColor:`${p.color}60`,background:`${p.color}10`}:undefined}><Avatar person={p} size={23}/>{p.name}</button>)}</div><div className="-mx-1 overflow-x-auto pb-2"><div className="min-w-[760px] px-1"><Card className="overflow-hidden"><div className="flex items-center justify-between border-b border-white/[0.06] p-4"><button onClick={()=>changeMonth(-1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="left"/></button><div className="text-center"><div className="text-lg font-bold capitalize">{monthName(year,month)}</div><div className="text-xs text-slate-500">{year}</div></div><button onClick={()=>changeMonth(1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="right"/></button></div><div className="grid grid-cols-7 border-b border-white/[0.06]">{["Po","Út","St","Čt","Pá","So","Ne"].map((d,idx)=><div key={d} className={`p-3 text-center text-[10px] font-bold ${idx>=5?"text-slate-500":"text-slate-600"}`}>{d}</div>)}</div><div className="grid grid-cols-7">{cells.map((day,i)=>{if(!day)return <div key={`e${i}`} className="min-h-[105px] border-b border-r border-white/[0.04] bg-black/10"/>; const date=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`; const isToday=date===today; const weekend=(i%7)>=5; return <div key={date} onClick={()=>{if(!currentPerson)return;openAddShift(date)}} className={`relative min-h-[105px] cursor-pointer border-b border-r border-white/[0.04] p-2 transition hover:bg-white/[0.035] ${weekend?"bg-white/[0.012]":""}`} style={isToday?{background:"color-mix(in srgb, var(--theme) 7%, transparent)",boxShadow:"inset 0 0 0 1px color-mix(in srgb, var(--theme) 28%, transparent)"}:undefined}><div className={`mb-2 flex h-6 w-6 items-center justify-center rounded-lg text-xs font-semibold ${isToday?"theme-soft":"text-slate-500"}`}>{day}</div>{(birthdaysByMonthDay.get(date.slice(5))?.length??0)>0&&<div className="mb-1.5 space-y-1">{birthdaysByMonthDay.get(date.slice(5))!.map(p=><div key={`birthday-${p.id}`} className="truncate rounded-lg border px-2 py-1 text-[9px] font-bold" style={{borderColor:`${p.color}45`,background:`${p.color}12`,color:p.color}}>🎂 {p.name} — {birthdayAgeOnDate(p.birthday,date)} let</div>)}</div>}<div className="space-y-1">{(shiftsByDate.get(date)??[]).map(s=>{const p=peopleById.get(s.userId);if(!p)return null;return <div key={s.id} onClick={e=>{e.stopPropagation();setDetailShift(s)}} className="rounded-lg px-2 py-1.5 text-[9px] font-semibold transition hover:brightness-110" style={{
   background:`linear-gradient(135deg, ${shiftInfo[s.type].color}55, ${shiftInfo[s.type].color}20)`,
   color:"#fff",
   border:`1px solid ${shiftInfo[s.type].color}88`,
   borderLeft:`3px solid ${shiftInfo[s.type].color}`,
   boxShadow:`inset 0 0 22px ${shiftInfo[s.type].color}20, 0 6px 20px ${shiftInfo[s.type].color}18`,
   cursor:"pointer"
-}}><div className="truncate">{p.name} · {shiftInfo[s.type].short}</div><div className="opacity-70">{s.type==="vacation"?`Dovolená do ${new Date(`${s.endDate||s.date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})}`:`${s.startTime}–${s.endTime}`}</div></div>}))}</div></div>})}</div></Card></div></div><div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 text-xs text-slate-500"><Icon name="lock" size={15}/>{loading?"Načítám směny…":"Upravovat můžeš pouze svoje směny. Směny ostatních jsou pouze k zobrazení."}</div>{detailShift&&<ShiftDetailModal shift={detailShift} person={people.find(p=>p.id===detailShift.userId) || null} editable={currentPerson?.id===detailShift.userId} onClose={()=>setDetailShift(null)} onEdit={()=>{const shift=detailShift;setDetailShift(null);openEditShift(shift);}}/>}</div>;
+}}><div className="truncate">{p.name} · {shiftInfo[s.type].short}</div><div className="opacity-70">{s.type==="vacation"?`Dovolená do ${new Date(`${s.endDate||s.date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})}`:`${s.startTime}–${s.endTime}`}</div></div>})}</div></div>})}</div></Card></div></div><div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 text-xs text-slate-500"><Icon name="lock" size={15}/>{loading?"Načítám směny…":"Upravovat můžeš pouze svoje směny. Směny ostatních jsou pouze k zobrazení."}</div>{detailShift&&<ShiftDetailModal shift={detailShift} person={peopleById.get(detailShift.userId) || null} editable={currentPerson?.id===detailShift.userId} onClose={()=>setDetailShift(null)} onEdit={()=>{const shift=detailShift;setDetailShift(null);openEditShift(shift);}}/>}</div>;
 }
 
 function ShiftDetailModal({shift,person,editable,onClose,onEdit}:{shift:Shift;person:Person|null;editable:boolean;onClose:()=>void;onEdit:()=>void}){
