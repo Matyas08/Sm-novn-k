@@ -59,7 +59,7 @@ type WeekSchedule = Record<string, Lesson[]>;
 const APP_ACCENT = "#6d5dfc";
 const APP_ACCENT_SECONDARY = "#8b5cf6";
 const DAVID_AUTH_ID = "0989a80c-eaec-425b-a9e9-6ff0173c678d";
-const TRAM_REVIEW_EMAILS = new Set(["matejuher15@gmail.com", "08matytibi3115@gmail.com"]);
+const TRAM_REVIEW_EMAILS = new Set(["matejuher15@gmail.com"]);
 const TRAM_RATING_LABELS:Record<TramRating,string>={mrdka:"Mrdka",usla:"Ušla",topka:"Topka"};
 const TEAM_DESCRIPTIONS:Record<string,string>={
   "jakub.proch145@seznam.cz":"Ten, co rád papá a všechno zničí",
