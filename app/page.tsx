@@ -26,6 +26,9 @@ type Shift = {
   startTime: string;
   endTime: string;
   note: string | null;
+  rating: number | null;
+  ratingReason: string | null;
+  ratedAt: string | null;
 };
 
 type EventItem = {
@@ -161,6 +164,40 @@ function daysInMonth(year: number, month: number) { return new Date(year, month 
 function mondayOffset(year: number, month: number) { const d = new Date(year, month, 1).getDay(); return d === 0 ? 6 : d - 1; }
 function isoToday() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 
+function shiftRatingAvailableAt(shift: Shift) {
+  if (shift.type === "vacation" || shift.type === "sick") return null;
+  return new Date(shiftEndAt(shift).getTime() + 5 * 60 * 1000);
+}
+
+function shiftStartAt(shift: Shift) {
+  return new Date(`${shift.date}T${shift.startTime || "00:00"}:00`);
+}
+
+function shiftEndAt(shift: Shift) {
+  const start = shiftStartAt(shift);
+  const end = new Date(`${shift.date}T${shift.endTime || "00:00"}:00`);
+  if (end <= start) end.setDate(end.getDate() + 1);
+  return end;
+}
+
+function czechCount(value: number, one: string, few: string, many: string) {
+  return `${value} ${value === 1 ? one : value >= 2 && value <= 4 ? few : many}`;
+}
+
+function shiftCountdown(shift: Shift, now: number | null) {
+  if (now === null) return "Počítám…";
+  const start = shiftStartAt(shift).getTime();
+  if (now >= start) return now < shiftEndAt(shift).getTime() ? "Směna právě probíhá" : "Směna skončila";
+  let minutes = Math.ceil((start - now) / 60000);
+  const days = Math.floor(minutes / 1440); minutes -= days * 1440;
+  const hours = Math.floor(minutes / 60); minutes -= hours * 60;
+  const parts:string[]=[];
+  if(days)parts.push(czechCount(days,"den","dny","dní"));
+  if(hours)parts.push(czechCount(hours,"hodinu","hodiny","hodin"));
+  if(minutes)parts.push(czechCount(minutes,"minutu","minuty","minut"));
+  return `Za ${parts.join(" ") || "méně než minutu"}`;
+}
+
 export default function Home() {
   const [session, setSession] = useState<AuthSession>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -288,8 +325,8 @@ export default function Home() {
     if (!session) { setShifts([]); return; }
     (async () => {
       setLoadingShifts(true);
-      const { data, error } = await supabase.from("shifts").select("id,user_id,date,end_date,start_time,end_time,type,note").order("date", { ascending: true });
-      if (!error) setShifts((data ?? []).map(s => ({ id: s.id, userId: s.user_id, date: s.date, endDate: s.end_date || null, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5) || "", endTime: s.end_time?.slice(0,5) || "", note: s.note })));
+      const { data, error } = await supabase.from("shifts").select("id,user_id,date,end_date,start_time,end_time,type,note,rating,rating_reason,rated_at").order("date", { ascending: true });
+      if (!error) setShifts((data ?? []).map(s => ({ id: s.id, userId: s.user_id, date: s.date, endDate: s.end_date || null, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5) || "", endTime: s.end_time?.slice(0,5) || "", note: s.note, rating: s.rating ?? null, ratingReason: s.rating_reason || null, ratedAt: s.rated_at || null })));
       else console.error(error);
       setLoadingShifts(false);
     })();
@@ -457,7 +494,7 @@ export default function Home() {
     if (result.error) alert(result.error.message);
     else {
       const s = result.data;
-      const mapped: Shift = { id: s.id, userId: s.user_id, date: s.date, endDate: s.end_date || null, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5)||"", endTime: s.end_time?.slice(0,5)||"", note: s.note };
+      const mapped: Shift = { id: s.id, userId: s.user_id, date: s.date, endDate: s.end_date || null, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5)||"", endTime: s.end_time?.slice(0,5)||"", note: s.note, rating: s.rating ?? editingShift?.rating ?? null, ratingReason: s.rating_reason || editingShift?.ratingReason || null, ratedAt: s.rated_at || editingShift?.ratedAt || null };
       setShifts(prev => [...prev.filter(x => x.id !== mapped.id), mapped].sort((a,b)=>a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)));
       setShowShiftModal(false); setEditingShift(null);
     }
@@ -467,6 +504,27 @@ export default function Home() {
     if (!editingShift || !currentPerson || editingShift.userId !== currentPerson.id) return;
     const { error } = await supabase.from("shifts").delete().eq("id", editingShift.id);
     if (error) alert(error.message); else { setShifts(prev=>prev.filter(s=>s.id!==editingShift.id)); setShowShiftModal(false); setEditingShift(null); }
+  };
+
+  const saveShiftRating = async (shift: Shift, rating: number, ratingReason: string) => {
+    if (!currentPerson || shift.userId !== currentPerson.id) return false;
+    const availableAt = shiftRatingAvailableAt(shift);
+    if (!availableAt || Date.now() < availableAt.getTime() || rating < 0 || rating > 5) return false;
+
+    const ratedAt = new Date().toISOString();
+    const { error } = await supabase.rpc("rate_own_shift", {
+      p_shift_id: shift.id,
+      p_rating: rating,
+      p_reason: ratingReason.trim() || null,
+    });
+
+    if (error) {
+      alert(`Hodnocení se nepodařilo uložit: ${error.message}`);
+      return false;
+    }
+
+    setShifts(prev => prev.map(item => item.id === shift.id ? { ...item, rating, ratingReason: ratingReason.trim() || null, ratedAt } : item));
+    return true;
   };
 
   const savePractice = async (item: PracticeItem) => {
@@ -599,8 +657,11 @@ export default function Home() {
     const ps = shifts.filter(s=>s.userId===person.id);
     const counts:Record<ShiftType,number>={morning:0,afternoon:0,intershift:0,night:0,midnight:0,all_day:0,emergency:0,vacation:0,sick:0};
     let totalMinutes=0;
+    let ratingTotal=0;
+    let ratedShifts=0;
     for(const s of ps){
       counts[s.type]++;
+      if(s.rating!==null){ratingTotal+=s.rating;ratedShifts++;}
       if(s.type==="vacation"||s.type==="sick")continue;
       const [sh,sm]=s.startTime.split(":").map(Number), [eh,em]=s.endTime.split(":").map(Number);
       let a=sh*60+sm,b=eh*60+em;
@@ -615,6 +676,8 @@ export default function Home() {
       hours,
       minutes,
       totalMinutes,
+      ratingAverage:ratedShifts?ratingTotal/ratedShifts:null,
+      ratedShifts,
       ...counts
     };
   }), [people, shifts]);
@@ -644,7 +707,7 @@ export default function Home() {
       <section className="w-full lg:ml-[252px]">
         <div className="mx-auto max-w-[1500px] px-4 pb-28 pt-24 sm:px-6 lg:px-10 lg:pb-16 lg:pt-10">
           {activePage === "overview" && <Overview people={people} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} practice={practice} openPractice={()=>setShowPracticeModal(true)} deletePractice={deletePractice} />}
-          {activePage === "shifts" && <ShiftsPage people={people} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} loading={loadingShifts} />}
+          {activePage === "shifts" && <ShiftsPage people={people} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} saveShiftRating={saveShiftRating} loading={loadingShifts} />}
           {activePage === "events" && <EventsPage events={events} people={people} currentPerson={currentPerson} openCreate={()=>setShowEventModal(true)} deleteEvent={deleteEvent} />}
           {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} />}
           {activePage === "settings" && <SettingsPage currentPerson={currentPerson} setPeople={setPeople} themeColor={themeColor} setThemeColor={setThemeColor} themeColor2={themeColor2} setThemeColor2={setThemeColor2} />}
@@ -706,6 +769,12 @@ function dailyBoost(person: Person | null) {
 }
 
 function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift, tibiWeek, setTibiWeek, tibiOdd, tibiEven, davidSchool, practice, openPractice, deletePractice }: { people:Person[]; shifts:Shift[]; currentPerson:Person|null; events:EventItem[]; nameDay:string; openAddShift:(date?:string)=>void; tibiWeek:"odd"|"even"; setTibiWeek:(v:"odd"|"even")=>void; tibiOdd:WeekSchedule;tibiEven:WeekSchedule;davidSchool:WeekSchedule;practice:PracticeItem[];openPractice:()=>void;deletePractice:(id:string)=>Promise<void>; }) {
+  const [clock,setClock]=useState<number|null>(null);
+  useEffect(()=>{
+    setClock(Date.now());
+    const interval=setInterval(()=>setClock(Date.now()),60000);
+    return()=>clearInterval(interval);
+  },[]);
   const today=isoToday(); const upcoming=[...shifts].filter(s=>s.date>=today).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,8);
   return <div><PageHeader eyebrow="SMĚNOVNÍK" title="Přehled" description="Všechno důležité na jednom místě." action={<div className="flex max-w-[440px] flex-col gap-2"><div className="rounded-2xl border theme-border bg-white/[0.025] px-4 py-3 shadow-[0_12px_30px_rgba(0,0,0,.14)]"><div className="text-[9px] font-bold uppercase tracking-[.18em] text-slate-600">Dnešní povzbuzení</div><div className="mt-1.5 text-sm font-semibold leading-relaxed text-slate-200">{dailyBoost(currentPerson)}</div></div><div className="self-end rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1.5 text-[11px] text-slate-400">🎉 Dnes {nameDay.includes(",") ? "mají" : "má"} svátek <span className="font-semibold text-slate-200">{nameDay || "načítám…"}</span></div></div>}/>
     <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -725,7 +794,7 @@ function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift
         </div>
       })}
     </section>
-    <section className="mb-8 grid gap-5 xl:grid-cols-[1.35fr_.65fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-500">Co nás čeká dál</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcoming.map(s=>{const p=people.find(x=>x.id===s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="text-xs text-slate-500">{formatDate(s.date)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-500">{s.startTime} – {s.endTime}</div></div></div>})}</div></Card><Card className="p-6"><h2 className="font-bold">Rychlé informace</h2><p className="mt-1 text-xs text-slate-500">Aktuální stav</p><div className="mt-5 space-y-3"><MiniStat icon="calendar" label="Směn dnes" value={shifts.filter(s=>s.type==="vacation"?today>=s.date&&today<=(s.endDate||s.date):s.date===today).length}/><MiniStat icon="chart" label="Celkem směn" value={shifts.length}/><MiniStat icon="users" label="Členů" value={people.length}/><MiniStat icon="event" label="Událostí" value={events.length}/></div></Card></section>
+    <section className="mb-8 grid gap-5 xl:grid-cols-[1.35fr_.65fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-500">Co nás čeká dál</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcoming.map(s=>{const p=people.find(x=>x.id===s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="text-xs text-slate-500">{formatDate(s.date)}</div><div className="mt-1 text-[10px] font-bold theme-text">{shiftCountdown(s,clock)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-500">{s.startTime} – {s.endTime}</div></div></div>})}</div></Card><Card className="p-6"><h2 className="font-bold">Rychlé informace</h2><p className="mt-1 text-xs text-slate-500">Aktuální stav</p><div className="mt-5 space-y-3"><MiniStat icon="calendar" label="Směn dnes" value={shifts.filter(s=>s.type==="vacation"?today>=s.date&&today<=(s.endDate||s.date):s.date===today).length}/><MiniStat icon="chart" label="Celkem směn" value={shifts.length}/><MiniStat icon="users" label="Členů" value={people.length}/><MiniStat icon="event" label="Událostí" value={events.length}/></div></Card></section>
     <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy zůstávají jen v Přehledu a nemění barvu celého webu.</p></div><div className="grid gap-6"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden</SmallToggle></div>}/><SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool}/></div><Card className="mt-5 p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase"/></div><div><h3 className="font-bold">Davčův praxe</h3><p className="text-xs text-slate-500">Samostatný přehled praxe pouze tady.</p></div></div>{currentPerson?.email==="dkudlata9@gmail.com"?<button onClick={openPractice} className="flex items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.04]"><Icon name="plus" size={14}/>Přidat praxi</button>:<div className="flex items-center gap-2 text-[11px] text-slate-600"><Icon name="lock" size={13}/>Praxi upravuje pouze Davča</div>}</div>{practice.length===0?<Empty text="Zatím není zapsaná žádná praxe."/>:<div className="grid gap-2 md:grid-cols-2">{practice.map(p=><div key={p.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-4"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Icon name="briefcase" size={17}/></div><div className="flex-1"><div className="text-sm font-semibold">{formatDate(p.date)}</div><div className="text-xs text-slate-500">{p.startTime} – {p.endTime}{p.note?` · ${p.note}`:""}</div></div>{currentPerson?.email==="dkudlata9@gmail.com"&&<button onClick={()=>deletePractice(p.id)} className="text-xs text-slate-600 hover:text-red-400">Smazat</button>}</div>)}</div>}</Card></section>
   </div>;
 }
@@ -769,7 +838,7 @@ function birthdayAgeOnDate(birthday:string | null | undefined, date:string){
   return targetYear-birthYear;
 }
 
-function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerson,month,year,changeMonth,filter,setFilter,openAddShift,openEditShift,loading}:{people:Person[];shifts:Shift[];currentPerson:Person|null;selectedPerson:Person|null;setSelectedPerson:(p:Person|null)=>void;month:number;year:number;changeMonth:(d:number)=>void;filter:ShiftType|"all";setFilter:(f:ShiftType|"all")=>void;openAddShift:(d?:string)=>void;openEditShift:(s:Shift)=>void;loading:boolean;}){
+function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerson,month,year,changeMonth,filter,setFilter,openAddShift,openEditShift,saveShiftRating,loading}:{people:Person[];shifts:Shift[];currentPerson:Person|null;selectedPerson:Person|null;setSelectedPerson:(p:Person|null)=>void;month:number;year:number;changeMonth:(d:number)=>void;filter:ShiftType|"all";setFilter:(f:ShiftType|"all")=>void;openAddShift:(d?:string)=>void;openEditShift:(s:Shift)=>void;saveShiftRating:(shift:Shift,rating:number,reason:string)=>Promise<boolean>;loading:boolean;}){
   const [detailShift,setDetailShift]=useState<Shift|null>(null);
   const cells=useMemo(() => {
     const result:(number|null)[]=[];
@@ -828,11 +897,31 @@ function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerso
   borderLeft:`3px solid ${shiftInfo[s.type].color}`,
   boxShadow:`inset 0 0 22px ${shiftInfo[s.type].color}20, 0 6px 20px ${shiftInfo[s.type].color}18`,
   cursor:"pointer"
-}}><div className="truncate">{p.name} · {shiftInfo[s.type].short}</div><div className="opacity-70">{s.type==="vacation"?`Dovolená do ${new Date(`${s.endDate||s.date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})}`:`${s.startTime}–${s.endTime}`}</div></div>})}</div></div>})}</div></Card></div></div><div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 text-xs text-slate-500"><Icon name="lock" size={15}/>{loading?"Načítám směny…":"Upravovat můžeš pouze svoje směny. Směny ostatních jsou pouze k zobrazení."}</div>{detailShift&&<ShiftDetailModal shift={detailShift} person={peopleById.get(detailShift.userId) || null} editable={currentPerson?.id===detailShift.userId} onClose={()=>setDetailShift(null)} onEdit={()=>{const shift=detailShift;setDetailShift(null);openEditShift(shift);}}/>}</div>;
+}}><div className="flex min-w-0 items-center gap-1"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{background:p.color,boxShadow:`0 0 7px ${p.color}`}}/><span className="truncate text-[10px] font-black" style={{color:p.color}}>{p.name}</span><span className="truncate opacity-75">· {shiftInfo[s.type].short}</span>{s.rating!==null&&<span className="ml-auto shrink-0 text-[9px] text-amber-300">{s.rating}★</span>}</div><div className="mt-0.5 opacity-70">{s.type==="vacation"?`Dovolená do ${new Date(`${s.endDate||s.date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})}`:`${s.startTime}–${s.endTime}`}</div></div>})}</div></div>})}</div></Card></div></div><div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 text-xs text-slate-500"><Icon name="lock" size={15}/>{loading?"Načítám směny…":"Upravovat můžeš pouze svoje směny. Směny ostatních jsou pouze k zobrazení."}</div>{detailShift&&<ShiftDetailModal shift={detailShift} person={peopleById.get(detailShift.userId) || null} editable={currentPerson?.id===detailShift.userId} onClose={()=>setDetailShift(null)} onEdit={()=>{const shift=detailShift;setDetailShift(null);openEditShift(shift);}} onSaveRating={saveShiftRating}/>}</div>;
 }
 
-function ShiftDetailModal({shift,person,editable,onClose,onEdit}:{shift:Shift;person:Person|null;editable:boolean;onClose:()=>void;onEdit:()=>void}){
+function ShiftDetailModal({shift,person,editable,onClose,onEdit,onSaveRating}:{shift:Shift;person:Person|null;editable:boolean;onClose:()=>void;onEdit:()=>void;onSaveRating:(shift:Shift,rating:number,reason:string)=>Promise<boolean>}){
   const info=shiftInfo[shift.type];
+  const [clock,setClock]=useState(()=>Date.now());
+  const [rating,setRating]=useState<number|null>(shift.rating);
+  const [ratingReason,setRatingReason]=useState(shift.ratingReason || "");
+  const [savingRating,setSavingRating]=useState(false);
+  const [ratingMessage,setRatingMessage]=useState("");
+  useEffect(()=>{
+    const interval=setInterval(()=>setClock(Date.now()),30000);
+    return()=>clearInterval(interval);
+  },[]);
+  const availableAt=shiftRatingAvailableAt(shift);
+  const canRate=editable&&availableAt!==null&&clock>=availableAt.getTime();
+  const minutesUntilRating=availableAt?Math.max(1,Math.ceil((availableAt.getTime()-clock)/60000)):0;
+  const submitRating=async()=>{
+    if(rating===null||!canRate)return;
+    setSavingRating(true);
+    setRatingMessage("");
+    const saved=await onSaveRating(shift,rating,ratingReason);
+    setRatingMessage(saved?"Hodnocení bylo uloženo.":"Hodnocení se nepodařilo uložit.");
+    setSavingRating(false);
+  };
   return <Modal onClose={onClose}>
     <div className="flex items-center gap-3">
       {person?<Avatar person={person} size={46}/>:<div className="flex h-[46px] w-[46px] items-center justify-center rounded-full bg-white/[0.06]"><Icon name="users" size={20}/></div>}
@@ -871,6 +960,19 @@ function ShiftDetailModal({shift,person,editable,onClose,onEdit}:{shift:Shift;pe
         <div className="text-[10px] font-bold uppercase tracking-[.16em] text-slate-600">Poznámka</div>
         <div className="mt-1.5 whitespace-pre-wrap text-sm text-slate-300">{shift.note?.trim() || "Bez poznámky"}</div>
       </div>
+
+      {availableAt!==null&&<div className="rounded-2xl border border-amber-400/15 bg-amber-400/[0.05] p-4">
+        <div className="text-[10px] font-bold uppercase tracking-[.16em] text-amber-300/70">Hodnocení směny</div>
+        {!editable&&rating===null&&<div className="mt-2 text-sm text-slate-500">Směna zatím nebyla ohodnocena.</div>}
+        {!editable&&rating!==null&&<><div className="mt-2 text-xl tracking-wider text-amber-300">{"★".repeat(rating)}{"☆".repeat(5-rating)} <span className="text-sm font-bold">{rating}/5</span></div>{ratingReason&&<div className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{ratingReason}</div>}</>}
+        {editable&&!canRate&&<div className="mt-2 text-sm text-slate-400">Hodnocení se zpřístupní 5 minut po skončení směny{availableAt.getTime()>clock?` (přibližně za ${minutesUntilRating} min)`:""}.</div>}
+        {canRate&&<>
+          <div className="mt-3 flex flex-wrap gap-2">{[0,1,2,3,4,5].map(value=><button type="button" key={value} onClick={()=>setRating(value)} className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${rating===value?"border-amber-300/60 bg-amber-400/20 text-amber-200":"border-white/[0.08] bg-black/20 text-slate-500 hover:text-amber-300"}`}>{value===0?"0★":"★".repeat(value)}</button>)}</div>
+          <label className="mt-4 block text-xs text-slate-400">Proč dáváš právě tolik hvězdiček?</label>
+          <textarea value={ratingReason} onChange={e=>setRatingReason(e.target.value)} rows={3} placeholder="Například: směna rychle utekla…" className="mt-2 w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-amber-300/40"/>
+          <div className="mt-3 flex items-center justify-between gap-3">{ratingMessage?<span className="text-xs text-emerald-300">{ratingMessage}</span>:<span/>}<button type="button" onClick={submitRating} disabled={rating===null||savingRating} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black text-slate-950 disabled:opacity-40">{savingRating?"Ukládám…":shift.rating===null?"Uložit hodnocení":"Upravit hodnocení"}</button></div>
+        </>}
+      </div>}
     </div>
 
     <div className="mt-6 flex items-center gap-2">
@@ -896,14 +998,14 @@ function EventsPage({events,people,currentPerson,openCreate,deleteEvent}:{events
   return <div><PageHeader eyebrow="PLÁNY" title="Události" description="Společné akce, výlety a další plány." action={<button type="button" onClick={openCreate} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110"><Icon name="plus" size={16}/>Nová událost</button>}/>
     {events.length===0?<div className="rounded-3xl border border-dashed border-white/[0.09] bg-white/[0.02] py-16 text-center"><div className="text-5xl">☹️</div><div className="mt-4 text-base font-semibold text-slate-300">Žádná událost</div><div className="mt-1 text-xs text-slate-600">Zatím tu nic naplánovaného není.</div></div>:<div className="grid gap-4 md:grid-cols-2">{events.map(e=><Card key={e.id} className="p-5"><div className="flex items-start justify-between"><div><div className="text-xs text-violet-300">{formatDate(e.date)} · {e.time}</div><h3 className="mt-2 text-lg font-bold">{e.title}</h3><p className="mt-1 text-sm text-slate-500">{e.place||"Bez místa"}</p></div>{currentPerson?.authId===e.createdBy&&<button type="button" onClick={()=>deleteEvent(e.id)} className="text-xs text-slate-600 hover:text-red-400">Smazat</button>}</div>{e.description&&<p className="mt-4 text-sm text-slate-400">{e.description}</p>}<div className="mt-4 flex -space-x-2">{e.participants.map(id=>{const p=people.find(x=>x.id===id);return p?<Avatar key={id} person={p} size={30}/>:null})}</div></Card>)}</div>}</div>}
 
-function StatsPage({stats,selectedId,setSelectedId}:{stats:{person:Person;shifts:number;hours:number;minutes:number;totalMinutes:number;morning:number;afternoon:number;intershift:number;night:number;midnight:number;all_day:number;emergency:number;vacation:number;sick:number}[];selectedId:string|null;setSelectedId:(id:string)=>void}){
+function StatsPage({stats,selectedId,setSelectedId}:{stats:{person:Person;shifts:number;hours:number;minutes:number;totalMinutes:number;ratingAverage:number|null;ratedShifts:number;morning:number;afternoon:number;intershift:number;night:number;midnight:number;all_day:number;emergency:number;vacation:number;sick:number}[];selectedId:string|null;setSelectedId:(id:string)=>void}){
   const selected=stats.find(s=>s.person.id===selectedId)||stats[0];
   return <div>
     <PageHeader eyebrow="ČÍSLA" title="Statistiky" description="Směny a odpracované hodiny všech členů."/>
     <div className="grid gap-5 xl:grid-cols-[300px_1fr]">
       <Card className="p-4"><div className="space-y-2">{stats.map(s=><button key={s.person.id} onClick={()=>setSelectedId(s.person.id)} className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left transition ${selected?.person.id===s.person.id?"bg-white/[0.07]":"hover:bg-white/[0.03]"}`}><Avatar person={s.person} size={38}/><div><div className="text-sm font-semibold">{s.person.name}</div><div className="text-xs text-slate-500">{s.shifts} směn · {s.hours} h {s.minutes} min</div></div></button>)}</div></Card>
       <div className="space-y-5">
-        {selected&&<Card className="p-6"><div className="flex items-center gap-4"><Avatar person={selected.person} size={54}/><div><h2 className="text-xl font-bold">{selected.person.name}</h2><p className="text-sm text-slate-500">Osobní statistiky</p></div></div><div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4"><StatBox label="Směny" value={selected.shifts}/><StatBox label="Čas" value={`${selected.hours} h ${selected.minutes} min`}/><StatBox label="Ranní" value={selected.morning} color={shiftInfo.morning.color}/><StatBox label="Odpolední" value={selected.afternoon} color={shiftInfo.afternoon.color}/><StatBox label="Mezisměna" value={selected.intershift} color={shiftInfo.intershift.color}/><StatBox label="Noční" value={selected.night} color={shiftInfo.night.color}/><StatBox label="Polonoc" value={selected.midnight} color={shiftInfo.midnight.color}/><StatBox label="Celodenní" value={selected.all_day} color={shiftInfo.all_day.color}/><StatBox label="Mimořádná směna" value={selected.emergency} color={shiftInfo.emergency.color}/><StatBox label="Dovolená" value={selected.vacation} color={shiftInfo.vacation.color}/><StatBox label="Nemoc" value={selected.sick} color={shiftInfo.sick.color}/></div></Card>}
+        {selected&&<Card className="p-6"><div className="flex items-center gap-4"><Avatar person={selected.person} size={54}/><div><h2 className="text-xl font-bold">{selected.person.name}</h2><p className="text-sm text-slate-500">Osobní statistiky</p></div></div><div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4"><StatBox label="Směny" value={selected.shifts}/><StatBox label="Čas" value={`${selected.hours} h ${selected.minutes} min`}/><StatBox label="Průměrné hodnocení" value={selected.ratingAverage===null?"—":`${selected.ratingAverage.toFixed(1)}/5 (${selected.ratedShifts}×)`}/><StatBox label="Ranní" value={selected.morning} color={shiftInfo.morning.color}/><StatBox label="Odpolední" value={selected.afternoon} color={shiftInfo.afternoon.color}/><StatBox label="Mezisměna" value={selected.intershift} color={shiftInfo.intershift.color}/><StatBox label="Noční" value={selected.night} color={shiftInfo.night.color}/><StatBox label="Polonoc" value={selected.midnight} color={shiftInfo.midnight.color}/><StatBox label="Celodenní" value={selected.all_day} color={shiftInfo.all_day.color}/><StatBox label="Mimořádná směna" value={selected.emergency} color={shiftInfo.emergency.color}/><StatBox label="Dovolená" value={selected.vacation} color={shiftInfo.vacation.color}/><StatBox label="Nemoc" value={selected.sick} color={shiftInfo.sick.color}/></div></Card>}
         <Card className="p-6"><h2 className="font-bold">Porovnání všech</h2><div className="mt-5 space-y-3">{stats.map(s=><div key={s.person.id} className="flex items-center gap-3"><Avatar person={s.person} size={32}/><div className="w-24 text-sm font-semibold">{s.person.name}</div><div className="h-2 flex-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full" style={{width:`${Math.min(100,(s.totalMinutes/Math.max(1,...stats.map(x=>x.totalMinutes)))*100)}%`,background:`linear-gradient(90deg,${s.person.color},${s.person.color}99)`}}/></div><div className="w-16 text-right text-xs text-slate-500">{s.hours} h {s.minutes} min</div></div>)}</div></Card>
       </div>
     </div>
