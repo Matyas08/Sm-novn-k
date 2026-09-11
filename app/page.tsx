@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 
 type ShiftType = "morning" | "afternoon" | "intershift" | "night" | "midnight" | "all_day" | "emergency" | "vacation" | "sick";
+type TramRating = "mrdka" | "usla" | "topka";
 type Page = "overview" | "shifts" | "events" | "stats" | "settings";
 type AuthSession = { user?: { email?: string | null } } | null;
 
@@ -29,6 +30,8 @@ type Shift = {
   rating: number | null;
   ratingReason: string | null;
   ratedAt: string | null;
+  tramNumber: string | null;
+  tramRating: TramRating | null;
 };
 
 type EventItem = {
@@ -56,6 +59,14 @@ type WeekSchedule = Record<string, Lesson[]>;
 const APP_ACCENT = "#6d5dfc";
 const APP_ACCENT_SECONDARY = "#8b5cf6";
 const DAVID_AUTH_ID = "0989a80c-eaec-425b-a9e9-6ff0173c678d";
+const TRAM_REVIEW_EMAILS = new Set(["matejuher15@gmail.com", "08matytibi3115@gmail.com"]);
+const TRAM_RATING_LABELS:Record<TramRating,string>={mrdka:"Mrdka",usla:"Ušla",topka:"Topka"};
+const TEAM_DESCRIPTIONS:Record<string,string>={
+  "jakub.proch145@seznam.cz":"Ten, co rád papá a všechno zničí",
+  "dkudlata9@gmail.com":"Ten, co hodně moc kakánkuje a sere Tibího",
+  "matejuher15@gmail.com":"Ten, co neustále vymýšlí nové věci a jenom prdí",
+  "08matytibi3115@gmail.com":"Ten, co šikanuje Davida a Kubu s Matym",
+};
 
 // Doplňková česká jména, která základní svátkové API nevrací.
 const EXTRA_CZECH_NAME_DAYS: Record<string, string[]> = {
@@ -325,8 +336,8 @@ export default function Home() {
     if (!session) { setShifts([]); return; }
     (async () => {
       setLoadingShifts(true);
-      const { data, error } = await supabase.from("shifts").select("id,user_id,date,end_date,start_time,end_time,type,note,rating,rating_reason,rated_at").order("date", { ascending: true });
-      if (!error) setShifts((data ?? []).map(s => ({ id: s.id, userId: s.user_id, date: s.date, endDate: s.end_date || null, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5) || "", endTime: s.end_time?.slice(0,5) || "", note: s.note, rating: s.rating ?? null, ratingReason: s.rating_reason || null, ratedAt: s.rated_at || null })));
+      const { data, error } = await supabase.from("shifts").select("id,user_id,date,end_date,start_time,end_time,type,note,rating,rating_reason,rated_at,tram_number,tram_rating").order("date", { ascending: true });
+      if (!error) setShifts((data ?? []).map(s => ({ id: s.id, userId: s.user_id, date: s.date, endDate: s.end_date || null, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5) || "", endTime: s.end_time?.slice(0,5) || "", note: s.note, rating: s.rating ?? null, ratingReason: s.rating_reason || null, ratedAt: s.rated_at || null, tramNumber: s.tram_number || null, tramRating: (s.tram_rating as TramRating) || null })));
       else console.error(error);
       setLoadingShifts(false);
     })();
@@ -494,7 +505,7 @@ export default function Home() {
     if (result.error) alert(result.error.message);
     else {
       const s = result.data;
-      const mapped: Shift = { id: s.id, userId: s.user_id, date: s.date, endDate: s.end_date || null, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5)||"", endTime: s.end_time?.slice(0,5)||"", note: s.note, rating: s.rating ?? editingShift?.rating ?? null, ratingReason: s.rating_reason || editingShift?.ratingReason || null, ratedAt: s.rated_at || editingShift?.ratedAt || null };
+      const mapped: Shift = { id: s.id, userId: s.user_id, date: s.date, endDate: s.end_date || null, type: s.type as ShiftType, startTime: s.start_time?.slice(0,5)||"", endTime: s.end_time?.slice(0,5)||"", note: s.note, rating: s.rating ?? editingShift?.rating ?? null, ratingReason: s.rating_reason || editingShift?.ratingReason || null, ratedAt: s.rated_at || editingShift?.ratedAt || null, tramNumber: s.tram_number || editingShift?.tramNumber || null, tramRating: (s.tram_rating as TramRating) || editingShift?.tramRating || null };
       setShifts(prev => [...prev.filter(x => x.id !== mapped.id), mapped].sort((a,b)=>a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)));
       setShowShiftModal(false); setEditingShift(null);
     }
@@ -506,7 +517,7 @@ export default function Home() {
     if (error) alert(error.message); else { setShifts(prev=>prev.filter(s=>s.id!==editingShift.id)); setShowShiftModal(false); setEditingShift(null); }
   };
 
-  const saveShiftRating = async (shift: Shift, rating: number, ratingReason: string) => {
+  const saveShiftRating = async (shift: Shift, rating: number, ratingReason: string, tramNumber: string, tramRating: TramRating | null) => {
     if (!currentPerson || shift.userId !== currentPerson.id) return false;
     const availableAt = shiftRatingAvailableAt(shift);
     if (!availableAt || Date.now() < availableAt.getTime() || rating < 0 || rating > 5) return false;
@@ -516,6 +527,8 @@ export default function Home() {
       p_shift_id: shift.id,
       p_rating: rating,
       p_reason: ratingReason.trim() || null,
+      p_tram_number: tramNumber.trim() || null,
+      p_tram_rating: tramRating,
     });
 
     if (error) {
@@ -523,7 +536,7 @@ export default function Home() {
       return false;
     }
 
-    setShifts(prev => prev.map(item => item.id === shift.id ? { ...item, rating, ratingReason: ratingReason.trim() || null, ratedAt } : item));
+    setShifts(prev => prev.map(item => item.id === shift.id ? { ...item, rating, ratingReason: ratingReason.trim() || null, ratedAt, tramNumber: tramNumber.trim() || null, tramRating } : item));
     return true;
   };
 
@@ -786,7 +799,7 @@ function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift
           <div className="pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full blur-[55px]" style={{background:`${p.color}28`}}/>
           <div className="relative flex items-center gap-4">
             <Avatar person={p} size={54}/>
-            <div className="min-w-0 flex-1"><div className="text-[15px] font-black tracking-tight">{p.name}</div><div className="mt-1 text-xs" style={{color:p.id===currentPerson?.id?p.color:"#64748b"}}>{p.id===currentPerson?.id?"To jsi ty":"Člen týmu"}</div></div>
+            <div className="min-w-0 flex-1"><div className="text-[15px] font-black tracking-tight">{p.name}</div><div className="mt-1 text-xs leading-relaxed" style={{color:p.color}}>{TEAM_DESCRIPTIONS[p.email]||"Člen týmu"}</div></div>
           </div>
           <div className="relative mt-5 rounded-2xl border border-white/[0.05] bg-black/20 p-4">
             {todayShifts.length>0?<div className="space-y-2">{todayShifts.map(s=><div key={s.id} className="rounded-xl border px-3 py-2" style={{borderColor:`${shiftInfo[s.type].color}38`,background:`${shiftInfo[s.type].color}0d`}}><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-base font-black tracking-tight">{s.startTime} – {s.endTime}</div></div>)}</div>:<><div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div><div className="mt-1 text-xs text-slate-600">Volno</div></>}
@@ -838,7 +851,7 @@ function birthdayAgeOnDate(birthday:string | null | undefined, date:string){
   return targetYear-birthYear;
 }
 
-function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerson,month,year,changeMonth,filter,setFilter,openAddShift,openEditShift,saveShiftRating,loading}:{people:Person[];shifts:Shift[];currentPerson:Person|null;selectedPerson:Person|null;setSelectedPerson:(p:Person|null)=>void;month:number;year:number;changeMonth:(d:number)=>void;filter:ShiftType|"all";setFilter:(f:ShiftType|"all")=>void;openAddShift:(d?:string)=>void;openEditShift:(s:Shift)=>void;saveShiftRating:(shift:Shift,rating:number,reason:string)=>Promise<boolean>;loading:boolean;}){
+function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerson,month,year,changeMonth,filter,setFilter,openAddShift,openEditShift,saveShiftRating,loading}:{people:Person[];shifts:Shift[];currentPerson:Person|null;selectedPerson:Person|null;setSelectedPerson:(p:Person|null)=>void;month:number;year:number;changeMonth:(d:number)=>void;filter:ShiftType|"all";setFilter:(f:ShiftType|"all")=>void;openAddShift:(d?:string)=>void;openEditShift:(s:Shift)=>void;saveShiftRating:(shift:Shift,rating:number,reason:string,tramNumber:string,tramRating:TramRating|null)=>Promise<boolean>;loading:boolean;}){
   const [detailShift,setDetailShift]=useState<Shift|null>(null);
   const cells=useMemo(() => {
     const result:(number|null)[]=[];
@@ -900,11 +913,13 @@ function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerso
 }}><div className="flex min-w-0 items-center gap-1"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{background:p.color,boxShadow:`0 0 7px ${p.color}`}}/><span className="truncate text-[10px] font-black" style={{color:p.color}}>{p.name}</span><span className="truncate opacity-75">· {shiftInfo[s.type].short}</span>{s.rating!==null&&<span className="ml-auto shrink-0 text-[9px] text-amber-300">{s.rating}★</span>}</div><div className="mt-0.5 opacity-70">{s.type==="vacation"?`Dovolená do ${new Date(`${s.endDate||s.date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})}`:`${s.startTime}–${s.endTime}`}</div></div>})}</div></div>})}</div></Card></div></div><div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 text-xs text-slate-500"><Icon name="lock" size={15}/>{loading?"Načítám směny…":"Upravovat můžeš pouze svoje směny. Směny ostatních jsou pouze k zobrazení."}</div>{detailShift&&<ShiftDetailModal shift={detailShift} person={peopleById.get(detailShift.userId) || null} editable={currentPerson?.id===detailShift.userId} onClose={()=>setDetailShift(null)} onEdit={()=>{const shift=detailShift;setDetailShift(null);openEditShift(shift);}} onSaveRating={saveShiftRating}/>}</div>;
 }
 
-function ShiftDetailModal({shift,person,editable,onClose,onEdit,onSaveRating}:{shift:Shift;person:Person|null;editable:boolean;onClose:()=>void;onEdit:()=>void;onSaveRating:(shift:Shift,rating:number,reason:string)=>Promise<boolean>}){
+function ShiftDetailModal({shift,person,editable,onClose,onEdit,onSaveRating}:{shift:Shift;person:Person|null;editable:boolean;onClose:()=>void;onEdit:()=>void;onSaveRating:(shift:Shift,rating:number,reason:string,tramNumber:string,tramRating:TramRating|null)=>Promise<boolean>}){
   const info=shiftInfo[shift.type];
   const [clock,setClock]=useState(()=>Date.now());
   const [rating,setRating]=useState<number|null>(shift.rating);
   const [ratingReason,setRatingReason]=useState(shift.ratingReason || "");
+  const [tramNumber,setTramNumber]=useState(shift.tramNumber || "");
+  const [tramRating,setTramRating]=useState<TramRating|null>(shift.tramRating);
   const [savingRating,setSavingRating]=useState(false);
   const [ratingMessage,setRatingMessage]=useState("");
   useEffect(()=>{
@@ -918,10 +933,11 @@ function ShiftDetailModal({shift,person,editable,onClose,onEdit,onSaveRating}:{s
     if(rating===null||!canRate)return;
     setSavingRating(true);
     setRatingMessage("");
-    const saved=await onSaveRating(shift,rating,ratingReason);
+    const saved=await onSaveRating(shift,rating,ratingReason,tramNumber,tramRating);
     setRatingMessage(saved?"Hodnocení bylo uloženo.":"Hodnocení se nepodařilo uložit.");
     setSavingRating(false);
   };
+  const canEditTram=editable&&Boolean(person?.email&&TRAM_REVIEW_EMAILS.has(person.email));
   return <Modal onClose={onClose}>
     <div className="flex items-center gap-3">
       {person?<Avatar person={person} size={46}/>:<div className="flex h-[46px] w-[46px] items-center justify-center rounded-full bg-white/[0.06]"><Icon name="users" size={20}/></div>}
@@ -965,12 +981,14 @@ function ShiftDetailModal({shift,person,editable,onClose,onEdit,onSaveRating}:{s
         <div className="text-[10px] font-bold uppercase tracking-[.16em] text-amber-300/70">Hodnocení směny</div>
         {!editable&&rating===null&&<div className="mt-2 text-sm text-slate-500">Směna zatím nebyla ohodnocena.</div>}
         {!editable&&rating!==null&&<><div className="mt-2 text-xl tracking-wider text-amber-300">{"★".repeat(rating)}{"☆".repeat(5-rating)} <span className="text-sm font-bold">{rating}/5</span></div>{ratingReason&&<div className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{ratingReason}</div>}</>}
+        {!canEditTram&&(tramNumber||tramRating)&&<div className="mt-3 rounded-xl border border-white/[0.07] bg-black/20 p-3 text-sm text-slate-300"><span className="font-bold text-slate-100">Tramvaj {tramNumber||"—"}</span>{tramRating&&<span className="ml-2 text-slate-400">· {TRAM_RATING_LABELS[tramRating]}</span>}</div>}
         {editable&&!canRate&&<div className="mt-2 text-sm text-slate-400">Hodnocení se zpřístupní 5 minut po skončení směny{availableAt.getTime()>clock?` (přibližně za ${minutesUntilRating} min)`:""}.</div>}
         {canRate&&<>
           <div className="mt-3 flex flex-wrap gap-2">{[0,1,2,3,4,5].map(value=><button type="button" key={value} onClick={()=>setRating(value)} className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${rating===value?"border-amber-300/60 bg-amber-400/20 text-amber-200":"border-white/[0.08] bg-black/20 text-slate-500 hover:text-amber-300"}`}>{value===0?"0★":"★".repeat(value)}</button>)}</div>
           <label className="mt-4 block text-xs text-slate-400">Proč dáváš právě tolik hvězdiček?</label>
           <textarea value={ratingReason} onChange={e=>setRatingReason(e.target.value)} rows={3} placeholder="Například: směna rychle utekla…" className="mt-2 w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-amber-300/40"/>
-          <div className="mt-3 flex items-center justify-between gap-3">{ratingMessage?<span className="text-xs text-emerald-300">{ratingMessage}</span>:<span/>}<button type="button" onClick={submitRating} disabled={rating===null||savingRating} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black text-slate-950 disabled:opacity-40">{savingRating?"Ukládám…":shift.rating===null?"Uložit hodnocení":"Upravit hodnocení"}</button></div>
+          {canEditTram&&<div className="mt-4 rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.04] p-4"><div className="text-[10px] font-bold uppercase tracking-[.16em] text-cyan-300/70">Hodnocení tramvaje</div><label className="mt-3 block text-xs text-slate-400">Číslo tramvaje</label><input value={tramNumber} onChange={e=>setTramNumber(e.target.value)} placeholder="Například 123" className="mt-2 w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-cyan-300/40"/><div className="mt-3 grid grid-cols-3 gap-2">{(Object.keys(TRAM_RATING_LABELS) as TramRating[]).map(value=><button type="button" key={value} onClick={()=>setTramRating(value)} className={`rounded-xl border px-2 py-2.5 text-xs font-bold transition ${tramRating===value?"border-cyan-300/60 bg-cyan-400/20 text-cyan-100":"border-white/[0.08] bg-black/20 text-slate-500 hover:text-cyan-300"}`}>{TRAM_RATING_LABELS[value]}</button>)}</div></div>}
+          <div className="mt-3 flex items-center justify-between gap-3">{ratingMessage?<span className="text-xs text-emerald-300">{ratingMessage}</span>:<span/>}<button type="button" onClick={submitRating} disabled={rating===null||savingRating||(canEditTram&&(!tramNumber.trim()||tramRating===null))} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black text-slate-950 disabled:opacity-40">{savingRating?"Ukládám…":shift.rating===null?"Uložit hodnocení":"Upravit hodnocení"}</button></div>
         </>}
       </div>}
     </div>
