@@ -175,6 +175,24 @@ function daysInMonth(year: number, month: number) { return new Date(year, month 
 function mondayOffset(year: number, month: number) { const d = new Date(year, month, 1).getDay(); return d === 0 ? 6 : d - 1; }
 function isoToday() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 
+function startOfWeek(date: Date) {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  const day = result.getDay();
+  result.setDate(result.getDate() + (day === 0 ? -6 : 1 - day));
+  return result;
+}
+
+function addDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function toLocalDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function shiftRatingAvailableAt(shift: Shift) {
   if (shift.type === "vacation" || shift.type === "sick") return null;
   return new Date(shiftEndAt(shift).getTime() + 5 * 60 * 1000);
@@ -237,6 +255,8 @@ export default function Home() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [showEventModal, setShowEventModal] = useState(false);
   const [statsPersonId, setStatsPersonId] = useState<string | null>(null);
+  const [statsWeeks, setStatsWeeks] = useState<1 | 4 | 8 | "all">(4);
+  const [statsWeekOffset, setStatsWeekOffset] = useState(0);
   const [tibiWeek, setTibiWeek] = useState<"odd" | "even">("odd");
   const [tibiOdd] = useState<WeekSchedule>(() => ({
     Po: [{ subject: "—" }, { subject: "MAT" }, { subject: "ČJ" }, { subject: "ICT" }, { subject: "SAZ" }, { subject: "AJ" }, { subject: "AEI" }, { subject: "—" }],
@@ -666,8 +686,18 @@ export default function Home() {
 
   const changeMonth = (dir: number) => { let m=month+dir,y=year; if(m<0){m=11;y--;} if(m>11){m=0;y++;} setMonth(m);setYear(y); };
 
+  const statsPeriod = useMemo(() => {
+    if (statsWeeks === "all") return null;
+    const currentWeekStart = startOfWeek(new Date());
+    const periodEndWeekStart = addDays(currentWeekStart, statsWeekOffset * 7);
+    const start = addDays(periodEndWeekStart, -((statsWeeks - 1) * 7));
+    const end = addDays(periodEndWeekStart, 6);
+    return { start: toLocalDate(start), end: toLocalDate(end) };
+  }, [statsWeeks, statsWeekOffset]);
+
   const stats = useMemo(() => people.map(person => {
-    const ps = shifts.filter(s=>s.userId===person.id);
+    const allPersonShifts = shifts.filter(s=>s.userId===person.id);
+    const ps = allPersonShifts.filter(s => !statsPeriod || (s.date >= statsPeriod.start && s.date <= statsPeriod.end));
     const counts:Record<ShiftType,number>={morning:0,afternoon:0,intershift:0,night:0,midnight:0,all_day:0,emergency:0,vacation:0,sick:0};
     let totalMinutes=0;
     let ratingTotal=0;
@@ -683,17 +713,26 @@ export default function Home() {
     }
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
+let weeksCount: number = statsWeeks === "all" ? 1 : statsWeeks;
+    if (statsWeeks === "all" && allPersonShifts.length > 0) {
+      const sortedDates = allPersonShifts.map(s => new Date(`${s.date}T12:00:00`)).sort((a,b) => a.getTime() - b.getTime());
+      const firstWeek = startOfWeek(sortedDates[0]);
+      const lastWeek = startOfWeek(sortedDates[sortedDates.length - 1]);
+      weeksCount = Math.max(1, Math.round((lastWeek.getTime() - firstWeek.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1);
+    }
+    const averageMinutesPerWeek = totalMinutes / weeksCount;
     return {
       person,
       shifts: ps.length,
       hours,
       minutes,
       totalMinutes,
+      averageMinutesPerWeek,
       ratingAverage:ratedShifts?ratingTotal/ratedShifts:null,
       ratedShifts,
       ...counts
     };
-  }), [people, shifts]);
+  }), [people, shifts, statsPeriod, statsWeeks]);
 
   if (authLoading) return <CenterMessage icon="calendar" text="Kontroluji přihlášení…" />;
   if (!session) return <LoginScreen selected={selectedLoginUser} setSelected={setSelectedLoginUser} password={loginPassword} setPassword={setLoginPassword} error={loginError} loading={loginLoading} onLogin={login} />;
@@ -722,7 +761,7 @@ export default function Home() {
           {activePage === "overview" && <Overview people={people} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} practice={practice} openPractice={()=>setShowPracticeModal(true)} deletePractice={deletePractice} />}
           {activePage === "shifts" && <ShiftsPage people={people} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} saveShiftRating={saveShiftRating} loading={loadingShifts} />}
           {activePage === "events" && <EventsPage events={events} people={people} currentPerson={currentPerson} openCreate={()=>setShowEventModal(true)} deleteEvent={deleteEvent} />}
-          {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} />}
+          {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} statsWeeks={statsWeeks} setStatsWeeks={setStatsWeeks} statsWeekOffset={statsWeekOffset} setStatsWeekOffset={setStatsWeekOffset} statsPeriod={statsPeriod} />}
           {activePage === "settings" && <SettingsPage currentPerson={currentPerson} setPeople={setPeople} themeColor={themeColor} setThemeColor={setThemeColor} themeColor2={themeColor2} setThemeColor2={setThemeColor2} />}
         </div>
       </section>
@@ -1016,14 +1055,24 @@ function EventsPage({events,people,currentPerson,openCreate,deleteEvent}:{events
   return <div><PageHeader eyebrow="PLÁNY" title="Události" description="Společné akce, výlety a další plány." action={<button type="button" onClick={openCreate} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white shadow-[0_8px_22px_rgba(99,102,241,.22)] hover:brightness-110"><Icon name="plus" size={16}/>Nová událost</button>}/>
     {events.length===0?<div className="rounded-3xl border border-dashed border-white/[0.09] bg-white/[0.02] py-16 text-center"><div className="text-5xl">☹️</div><div className="mt-4 text-base font-semibold text-slate-300">Žádná událost</div><div className="mt-1 text-xs text-slate-600">Zatím tu nic naplánovaného není.</div></div>:<div className="grid gap-4 md:grid-cols-2">{events.map(e=><Card key={e.id} className="p-5"><div className="flex items-start justify-between"><div><div className="text-xs text-violet-300">{formatDate(e.date)} · {e.time}</div><h3 className="mt-2 text-lg font-bold">{e.title}</h3><p className="mt-1 text-sm text-slate-500">{e.place||"Bez místa"}</p></div>{currentPerson?.authId===e.createdBy&&<button type="button" onClick={()=>deleteEvent(e.id)} className="text-xs text-slate-600 hover:text-red-400">Smazat</button>}</div>{e.description&&<p className="mt-4 text-sm text-slate-400">{e.description}</p>}<div className="mt-4 flex -space-x-2">{e.participants.map(id=>{const p=people.find(x=>x.id===id);return p?<Avatar key={id} person={p} size={30}/>:null})}</div></Card>)}</div>}</div>}
 
-function StatsPage({stats,selectedId,setSelectedId}:{stats:{person:Person;shifts:number;hours:number;minutes:number;totalMinutes:number;ratingAverage:number|null;ratedShifts:number;morning:number;afternoon:number;intershift:number;night:number;midnight:number;all_day:number;emergency:number;vacation:number;sick:number}[];selectedId:string|null;setSelectedId:(id:string)=>void}){
+function StatsPage({stats,selectedId,setSelectedId,statsWeeks,setStatsWeeks,statsWeekOffset,setStatsWeekOffset,statsPeriod}:{stats:{person:Person;shifts:number;hours:number;minutes:number;totalMinutes:number;averageMinutesPerWeek:number;ratingAverage:number|null;ratedShifts:number;morning:number;afternoon:number;intershift:number;night:number;midnight:number;all_day:number;emergency:number;vacation:number;sick:number}[];selectedId:string|null;setSelectedId:(id:string)=>void;statsWeeks:1|4|8|"all";setStatsWeeks:(value:1|4|8|"all")=>void;statsWeekOffset:number;setStatsWeekOffset:React.Dispatch<React.SetStateAction<number>>;statsPeriod:{start:string;end:string}|null}){
   const selected=stats.find(s=>s.person.id===selectedId)||stats[0];
+  const periodLabel=statsPeriod?`${new Date(`${statsPeriod.start}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric",year:"numeric"})} – ${new Date(`${statsPeriod.end}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric",year:"numeric"})}`:"Všechny uložené směny";
   return <div>
     <PageHeader eyebrow="ČÍSLA" title="Statistiky" description="Směny a odpracované hodiny všech členů."/>
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
+      <div className="flex flex-wrap gap-2">{([{value:1,label:"Týden"},{value:4,label:"4 týdny"},{value:8,label:"8 týdnů"},{value:"all",label:"Celkem"}] as const).map(option=><button key={option.value} onClick={()=>{setStatsWeeks(option.value);setStatsWeekOffset(0);}} className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${statsWeeks===option.value?"theme-soft theme-border text-white":"border-white/[0.08] bg-white/[0.025] text-slate-400 hover:bg-white/[0.05] hover:text-white"}`}>{option.label}</button>)}</div>
+      <div className="flex items-center gap-2">
+        {statsWeeks!=="all"&&<button onClick={()=>setStatsWeekOffset(v=>v-1)} className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-2 text-slate-400 transition hover:bg-white/[0.05] hover:text-white" aria-label="Předchozí období"><Icon name="left" size={17}/></button>}
+        <button onClick={()=>setStatsWeekOffset(0)} disabled={statsWeeks==="all"} className="rounded-xl border border-white/[0.08] bg-white/[0.025] px-4 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white/[0.05] disabled:cursor-default disabled:opacity-70">{statsWeekOffset===0&&statsWeeks!=="all"?"Aktuální období":periodLabel}</button>
+        {statsWeeks!=="all"&&<button onClick={()=>setStatsWeekOffset(v=>v+1)} className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-2 text-slate-400 transition hover:bg-white/[0.05] hover:text-white" aria-label="Další období"><Icon name="right" size={17}/></button>}
+      </div>
+      {statsWeeks!=="all"&&<div className="w-full text-right text-[11px] text-slate-600">{periodLabel}</div>}
+    </div>
     <div className="grid gap-5 xl:grid-cols-[300px_1fr]">
       <Card className="p-4"><div className="space-y-2">{stats.map(s=><button key={s.person.id} onClick={()=>setSelectedId(s.person.id)} className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left transition ${selected?.person.id===s.person.id?"bg-white/[0.07]":"hover:bg-white/[0.03]"}`}><Avatar person={s.person} size={38}/><div><div className="text-sm font-semibold">{s.person.name}</div><div className="text-xs text-slate-500">{s.shifts} směn · {s.hours} h {s.minutes} min</div></div></button>)}</div></Card>
       <div className="space-y-5">
-        {selected&&<Card className="p-6"><div className="flex items-center gap-4"><Avatar person={selected.person} size={54}/><div><h2 className="text-xl font-bold">{selected.person.name}</h2><p className="text-sm text-slate-500">Osobní statistiky</p></div></div><div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4"><StatBox label="Směny" value={selected.shifts}/><StatBox label="Čas" value={`${selected.hours} h ${selected.minutes} min`}/><StatBox label="Průměrné hodnocení" value={selected.ratingAverage===null?"—":`${selected.ratingAverage.toFixed(1)}/5 (${selected.ratedShifts}×)`}/><StatBox label="Ranní" value={selected.morning} color={shiftInfo.morning.color}/><StatBox label="Odpolední" value={selected.afternoon} color={shiftInfo.afternoon.color}/><StatBox label="Mezisměna" value={selected.intershift} color={shiftInfo.intershift.color}/><StatBox label="Noční" value={selected.night} color={shiftInfo.night.color}/><StatBox label="Polonoc" value={selected.midnight} color={shiftInfo.midnight.color}/><StatBox label="Celodenní" value={selected.all_day} color={shiftInfo.all_day.color}/><StatBox label="Mimořádná směna" value={selected.emergency} color={shiftInfo.emergency.color}/><StatBox label="Dovolená" value={selected.vacation} color={shiftInfo.vacation.color}/><StatBox label="Nemoc" value={selected.sick} color={shiftInfo.sick.color}/></div></Card>}
+        {selected&&<Card className="p-6"><div className="flex items-center gap-4"><Avatar person={selected.person} size={54}/><div><h2 className="text-xl font-bold">{selected.person.name}</h2><p className="text-sm text-slate-500">Osobní statistiky · {periodLabel}</p></div></div><div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4"><StatBox label="Směny" value={selected.shifts}/><StatBox label="Čas" value={`${selected.hours} h ${selected.minutes} min`}/><StatBox label="Průměr za týden" value={`${(selected.averageMinutesPerWeek/60).toLocaleString("cs-CZ",{minimumFractionDigits:1,maximumFractionDigits:1})} h`}/><StatBox label="Průměrné hodnocení" value={selected.ratingAverage===null?"—":`${selected.ratingAverage.toFixed(1)}/5 (${selected.ratedShifts}×)`}/><StatBox label="Ranní" value={selected.morning} color={shiftInfo.morning.color}/><StatBox label="Odpolední" value={selected.afternoon} color={shiftInfo.afternoon.color}/><StatBox label="Mezisměna" value={selected.intershift} color={shiftInfo.intershift.color}/><StatBox label="Noční" value={selected.night} color={shiftInfo.night.color}/><StatBox label="Polonoc" value={selected.midnight} color={shiftInfo.midnight.color}/><StatBox label="Celodenní" value={selected.all_day} color={shiftInfo.all_day.color}/><StatBox label="Mimořádná směna" value={selected.emergency} color={shiftInfo.emergency.color}/><StatBox label="Dovolená" value={selected.vacation} color={shiftInfo.vacation.color}/><StatBox label="Nemoc" value={selected.sick} color={shiftInfo.sick.color}/></div></Card>}
         <Card className="p-6"><h2 className="font-bold">Porovnání všech</h2><div className="mt-5 space-y-3">{stats.map(s=><div key={s.person.id} className="flex items-center gap-3"><Avatar person={s.person} size={32}/><div className="w-24 text-sm font-semibold">{s.person.name}</div><div className="h-2 flex-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full" style={{width:`${Math.min(100,(s.totalMinutes/Math.max(1,...stats.map(x=>x.totalMinutes)))*100)}%`,background:`linear-gradient(90deg,${s.person.color},${s.person.color}99)`}}/></div><div className="w-16 text-right text-xs text-slate-500">{s.hours} h {s.minutes} min</div></div>)}</div></Card>
       </div>
     </div>
