@@ -5,7 +5,7 @@ const MAINTENANCE_START = new Date(
 ).getTime();
 
 const MAINTENANCE_END = new Date(
-  "2026-09-24T14:00:00+02:00"
+  "2026-09-24T13:28:00+02:00"
 ).getTime();
 
 export default function proxy(request: NextRequest) {
