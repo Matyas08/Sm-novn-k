@@ -87,7 +87,7 @@ const loginUsers = [
   { name: "Davča", email: "dkudlata9@gmail.com", color: "#8b6548", avatar: "K" },
   { name: "Matýsek", email: "matejuher15@gmail.com", color: "#6f8f72", avatar: "M" },
   { name: "Kuba", email: "jakub.proch145@seznam.cz", color: "#b84a3a", avatar: "K" },
-  { name: "Luci", email: "lucieannapilarova97@gmail.com", color: "#facc15", avatar: "L" },
+  { name: "Cukr Mamča", email: "lucieannapilarova97@gmail.com", color: "#facc15", avatar: "L" },
 ] as const;
 
 const shiftInfo: Record<ShiftType, { label: string; short: string; color: string; icon: string }> = {
@@ -913,7 +913,7 @@ function dailyBoost(person: Person | null) {
     "Davča": "Davča",
     "Matýsek": "Matýsku",
     "Kuba": "Kubo",
-    "Lucka": "Luci",
+    "Lucka": "Cukr Mamča",
   };
   const name = person ? (vocative[person.name] || person.name) : "kámo";
   const messages = [
