@@ -60,11 +60,11 @@ const APP_ACCENT = "#9a4f2c";
 const APP_ACCENT_SECONDARY = "#c47a45";
 const AUTUMN_ACCENT = "#ff7a00";
 const AUTUMN_ACCENT_SECONDARY = "#ffd21f";
-const APP_VERSION = "2.0";
+const APP_VERSION = "2.1";
 const DAVID_AUTH_ID = "0989a80c-eaec-425b-a9e9-6ff0173c678d";
 const TRAM_REVIEW_EMAILS = new Set(["matejuher15@gmail.com"]);
 const TRAM_RATING_LABELS:Record<TramRating,string>={mrdka:"Mrdka",usla:"Ušla",topka:"Topka"};
-const UPDATE_ITEMS = [
+const UPDATE_ITEMS_20 = [
   "Nový podzimní vzhled Směnovníku s možností vrátit klasický motiv.",
   "Přidaná stránka Aktualizace a jednorázové okno s novinkami verze 2.0.",
   "Informace na Přehledu jsou nově v jednom přehledném panelu včetně dnešního svátku.",
@@ -74,6 +74,17 @@ const UPDATE_ITEMS = [
   "Události lze rozkliknout do detailu a datum má nový vzhled.",
   "Statistiky se po otevření zobrazují primárně za aktuální týden.",
   "V Nastavení lze vypnout animace a přepnout podzimní/klasický motiv.",
+] as const;
+
+const UPDATE_ITEMS_21 = [
+  "Nově lze vytisknout přehled směn podle vybraného měsíce, člověka a typu směny.",
+  "Statistiky lze nově vytisknout nebo uložit jako PDF včetně přehledu odpracovaných hodin.",
+  "U Tibíka, Kuby a Lucky se z každé odpracované směny automaticky odečítá 30 minut za pracovní přestávku.",
+  "Pauzy se promítají do celkových hodin, průměru za týden, porovnání členů i tiskových souhrnů.",
+  "Původní denní povzbuzení nahradily nové motivační citáty, které se každý den mění.",
+  "Každý člen má vlastní výběr citátů, aby se denní povzbuzení lépe hodilo právě k němu.",
+  "U denního citátu se už nezobrazuje jméno člena ani autor — zůstává jen samotný citát.",
+  "Proběhly také další drobné úpravy pro přesnější výpočty a přehlednější používání Směnovníku.",
 ] as const;
 
 // Doplňková česká jména, která základní svátkové API nevrací.
@@ -219,6 +230,84 @@ function shiftEndAt(shift: Shift) {
   const end = new Date(`${shift.date}T${shift.endTime || "00:00"}:00`);
   if (end <= start) end.setDate(end.getDate() + 1);
   return end;
+}
+
+
+const BREAK_DEDUCTION_EMAILS = new Set([
+  "08matytibi3115@gmail.com", // Tibík
+  "jakub.proch145@seznam.cz", // Kuba
+  "lucieannapilarova97@gmail.com", // Lucka / Cukr mamča
+]);
+
+function shiftWorkedMinutes(shift: Shift, person?: Person | null) {
+  if (shift.type === "vacation" || shift.type === "sick") return 0;
+
+  const [sh, sm] = shift.startTime.split(":").map(Number);
+  const [eh, em] = shift.endTime.split(":").map(Number);
+  let startMinutes = sh * 60 + sm;
+  let endMinutes = eh * 60 + em;
+  if (endMinutes <= startMinutes) endMinutes += 1440;
+
+  let worked = Math.max(0, endMinutes - startMinutes);
+  if (person && BREAK_DEDUCTION_EMAILS.has(person.email.toLowerCase())) {
+    worked = Math.max(0, worked - 30);
+  }
+  return worked;
+}
+
+function formatWorkedMinutes(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours} h ${minutes} min`;
+}
+
+function escapePrintHtml(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function openPrintWindow(title: string, body: string, landscape = false) {
+  const printWindow = window.open("", "_blank", "width=1100,height=800");
+  if (!printWindow) {
+    alert("Prohlížeč zablokoval tiskové okno. Povol vyskakovací okna a zkus to znovu.");
+    return;
+  }
+
+  printWindow.document.write(`<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8"/>
+<title>${escapePrintHtml(title)}</title>
+<style>
+  @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 12mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #1f2937; font-family: Arial, Helvetica, sans-serif; font-size: 12px; background: white; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  h2 { margin: 22px 0 8px; font-size: 16px; }
+  .muted { color: #6b7280; }
+  .header { border-bottom: 3px solid #f97316; padding-bottom: 10px; margin-bottom: 16px; }
+  .summary { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin: 12px 0 18px; }
+  .box { border: 1px solid #e5e7eb; border-radius: 9px; padding: 9px; }
+  .box strong { display: block; margin-top: 4px; font-size: 16px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { border: 1px solid #d1d5db; padding: 7px 8px; vertical-align: top; text-align: left; }
+  th { background: #f3f4f6; font-size: 11px; }
+  tr { break-inside: avoid; }
+  .badge { display: inline-block; border-radius: 999px; background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; padding: 2px 7px; font-size: 10px; font-weight: 700; }
+  .bar-row { display: grid; grid-template-columns: 120px 1fr 70px; align-items: center; gap: 8px; margin: 7px 0; }
+  .bar-track { height: 10px; border-radius: 999px; background: #e5e7eb; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg,#f97316,#facc15); }
+  .foot { margin-top: 18px; font-size: 10px; color: #9ca3af; }
+  @media print { .no-print { display:none !important; } }
+</style>
+</head>
+<body>${body}<script>window.onload=()=>{setTimeout(()=>window.print(),150)}<\/script></body>
+</html>`);
+  printWindow.document.close();
 }
 
 function czechCount(value: number, one: string, few: string, many: string) {
@@ -752,10 +841,7 @@ export default function Home() {
       counts[s.type]++;
       if(s.rating!==null){ratingTotal+=s.rating;ratedShifts++;}
       if(s.type==="vacation"||s.type==="sick")continue;
-      const [sh,sm]=s.startTime.split(":").map(Number), [eh,em]=s.endTime.split(":").map(Number);
-      let a=sh*60+sm,b=eh*60+em;
-      if(b<=a)b+=1440;
-      totalMinutes+=b-a;
+      totalMinutes += shiftWorkedMinutes(s, person);
     }
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
@@ -865,7 +951,7 @@ function LoginScreen({ selected, setSelected, password, setPassword, error, load
     <div className="relative z-10 w-full max-w-[920px]">
       <div className="mb-10 text-center">
         <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-[22px] border border-orange-300/20 bg-[linear-gradient(145deg,rgba(126,60,29,.70),rgba(54,31,20,.75))] text-orange-100 shadow-[0_18px_45px_rgba(88,39,13,.30),0_0_35px_rgba(198,94,28,.12)]"><Icon name="calendar" size={31}/></div>
-        <div className="mb-2 text-[10px] font-black uppercase tracking-[.28em] text-orange-300/65">Směnovník 2.0</div>
+        <div className="mb-2 text-[10px] font-black uppercase tracking-[.28em] text-orange-300/65">Směnovník 2.1</div>
         <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Kdo jsi?</h1>
         <p className="mt-2 text-sm text-stone-500">Vyber svůj účet a přihlas se</p>
       </div>
@@ -896,37 +982,86 @@ function Sidebar({ activePage, setActivePage, currentPerson, onLogout }: { activ
     {page:"updates",icon:"update",label:"Aktualizace"},
     {page:"settings",icon:"settings",label:"Nastavení"},
   ];
-  return <><aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-[252px] border-r border-white/[0.07] bg-[#0e0b08]/90 px-5 py-6 shadow-[20px_0_60px_rgba(0,0,0,.18)] backdrop-blur-2xl lg:flex lg:flex-col"><div className="mb-9 flex items-center gap-3 px-2"><div className="flex h-11 w-11 items-center justify-center rounded-2xl border theme-soft theme-ring"><Icon name="calendar" size={24}/></div><div><div className="text-[15px] font-black tracking-tight">Směnovník <span className="text-[10px] theme-text">v{APP_VERSION}</span></div><div className="text-[11px] text-slate-500">směny, škola & společný čas</div></div></div><nav className="space-y-1.5">{items.map(i=><button key={i.page} onClick={()=>setActivePage(i.page)} className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm transition ${activePage===i.page?"border theme-soft":"border border-transparent text-slate-500 hover:bg-white/[0.03] hover:text-white"}`}><Icon name={i.icon} size={19}/>{i.label}{i.page==="updates"&&<span className="ml-auto rounded-full bg-orange-400/15 px-2 py-0.5 text-[9px] font-bold text-orange-300">2.0</span>}</button>)}</nav><div className="mt-auto">{currentPerson&&<div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3"><Avatar person={currentPerson} size={38}/><div><div className="text-sm font-semibold">{currentPerson.name}</div><div className="flex items-center gap-1.5 text-[11px] text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/>Přihlášen</div></div></div></div>}<button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"><Icon name="logout" size={19}/>Odhlásit se</button></div></aside><div className="app-sidebar fixed left-0 right-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#0e0b08]/90 px-4 backdrop-blur-2xl lg:hidden"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border theme-soft"><Icon name="calendar" size={20}/></div><span className="font-black">Směnovník</span></div><button onClick={onLogout} className="rounded-xl p-2 text-slate-400 hover:text-red-400"><Icon name="logout"/></button></div><nav className="app-sidebar fixed bottom-0 left-0 right-0 z-40 grid grid-cols-6 border-t border-white/[0.07] bg-[#0e0b08]/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl lg:hidden">{items.map(i=><button key={`mobile-${i.page}`} onClick={()=>setActivePage(i.page)} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[8px] font-semibold transition ${activePage===i.page?"theme-soft":"text-slate-500"}`}><Icon name={i.icon} size={17}/><span className="max-w-full truncate">{i.label}</span></button>)}</nav></>;
+  return <><aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-[252px] border-r border-white/[0.07] bg-[#0e0b08]/90 px-5 py-6 shadow-[20px_0_60px_rgba(0,0,0,.18)] backdrop-blur-2xl lg:flex lg:flex-col"><div className="mb-9 flex items-center gap-3 px-2"><div className="flex h-11 w-11 items-center justify-center rounded-2xl border theme-soft theme-ring"><Icon name="calendar" size={24}/></div><div><div className="text-[15px] font-black tracking-tight">Směnovník <span className="text-[10px] theme-text">v{APP_VERSION}</span></div><div className="text-[11px] text-slate-500">směny, škola & společný čas</div></div></div><nav className="space-y-1.5">{items.map(i=><button key={i.page} onClick={()=>setActivePage(i.page)} className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm transition ${activePage===i.page?"border theme-soft":"border border-transparent text-slate-500 hover:bg-white/[0.03] hover:text-white"}`}><Icon name={i.icon} size={19}/>{i.label}{i.page==="updates"&&<span className="ml-auto rounded-full bg-orange-400/15 px-2 py-0.5 text-[9px] font-bold text-orange-300">2.1</span>}</button>)}</nav><div className="mt-auto">{currentPerson&&<div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3"><Avatar person={currentPerson} size={38}/><div><div className="text-sm font-semibold">{currentPerson.name}</div><div className="flex items-center gap-1.5 text-[11px] text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/>Přihlášen</div></div></div></div>}<button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"><Icon name="logout" size={19}/>Odhlásit se</button></div></aside><div className="app-sidebar fixed left-0 right-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#0e0b08]/90 px-4 backdrop-blur-2xl lg:hidden"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border theme-soft"><Icon name="calendar" size={20}/></div><span className="font-black">Směnovník</span></div><button onClick={onLogout} className="rounded-xl p-2 text-slate-400 hover:text-red-400"><Icon name="logout"/></button></div><nav className="app-sidebar fixed bottom-0 left-0 right-0 z-40 grid grid-cols-6 border-t border-white/[0.07] bg-[#0e0b08]/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl lg:hidden">{items.map(i=><button key={`mobile-${i.page}`} onClick={()=>setActivePage(i.page)} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[8px] font-semibold transition ${activePage===i.page?"theme-soft":"text-slate-500"}`}><Icon name={i.icon} size={17}/><span className="max-w-full truncate">{i.label}</span></button>)}</nav></>;
 }
 
 function PageHeader({ eyebrow,title,description,action }: { eyebrow:string;title:string;description:string;action?:ReactNode }) { return <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><div className="mb-2 inline-flex rounded-full border theme-soft px-2.5 py-1 text-[9px] font-bold tracking-[.22em]">{eyebrow}</div><h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">{title}</h1><p className="mt-2 text-sm text-slate-400">{description}</p></div>{action}</div>; }
 function Card({children,className=""}:{children:ReactNode;className?:string}){return <div className={`app-card rounded-3xl border border-white/[0.08] bg-[linear-gradient(145deg,rgba(31,24,19,.96),rgba(14,12,10,.94))] shadow-[0_18px_50px_rgba(0,0,0,.22)] ${className}`}>{children}</div>}
 
 function dailyBoost(person: Person | null) {
-  const vocative: Record<string,string> = {
-    "Tibík": "Tibíku",
-    "Davča": "Davča",
-    "Matýsek": "Matýsku",
-    "Kuba": "Kubo",
-    "Cukr mamča": "Luci",
+  const quotesByPerson: Record<string, string[]> = {
+    "Tibík": [
+      "Pokud ještě nemůžeš dělat velké věci, dělej malé věci velkým způsobem.",
+      "Za rok si přeješ, abys začal dnes.",
+      "Vzdělání je nejmocnější zbraň, kterou můžeš použít k tomu, abys změnil svět.",
+      "Dělej to nejlepší, co můžeš. Nikdo nemůže udělat víc než to.",
+      "Žij ze své představivosti, ne ze své historie.",
+      "Příležitosti se nestávají, ty je vytváříš.",
+      "Stanovení cílů je prvním krokem k tomu, aby se neviditelné stalo viditelným.",
+      "Nikdy se nevzdávej snu jen proto, že čas, který bude trvat, je dlouhý. Čas stejně uplyne.",
+    ],
+    "Davča": [
+      "Buď ty, kdo řídí den, nebo den řídí tebe.",
+      "Soustřeď všechny své myšlenky na práci, kterou máš před sebou.",
+      "Usilovnost poráží talent, když talent nepracuje.",
+      "Úspěšný muž se poučí ze svých chyb a zkusí to znovu jiným způsobem.",
+      "Když se snažíme stát se lepšími, vše kolem nás se také zlepšuje.",
+      "Začni tam, kde jsi. Použij, co máš. Dělej, co můžeš.",
+      "Pracuj, dokud tvůj bankovní účet nevypadá jako telefonní číslo.",
+      "Každé ráno se musíš probudit s odhodláním, pokud chceš jít spát s uspokojením.",
+    ],
+    "Matýsek": [
+      "Pokud to můžeš snít, můžeš to udělat.",
+      "Nedívej se na své nohy, abys zjistil, zda to děláš správně. Jen tancuj.",
+      "Někde čeká něco neuvěřitelného, co má být známo.",
+      "Nikdy se nebudeš nudit, když zkusíš něco nového.",
+      "Získej dobrý nápad a drž se ho. Pracuj na něm, dokud to nebude správně.",
+      "Jediný způsob, jak objevit hranice možného, je vyrazit trochu dál do nemožného.",
+      "Abychom byli nenahraditelní, musíme být vždy jiní.",
+      "Někteří lidé chtějí, aby se to stalo, někteří si přejí, aby se to stalo, jiní to dělají.",
+    ],
+    "Kuba": [
+      "Kdo ovládá sám sebe, je nejsilnějším bojovníkem.",
+      "Muž, který udělal chybu a neopraví ji, dělá další chybu.",
+      "Drž oči na hvězdách a nohy na zemi.",
+      "Dělej, co můžeš, s tím, co máš, kde jsi.",
+      "Úspěch je klopýtání od selhání k selhání bez ztráty nadšení.",
+      "Pokud opravdu chceš něco udělat, najdeš způsob. Pokud ne, najdeš výmluvu.",
+      "Odvaha je jako sval. Posilujeme ji používáním.",
+      "Jeden muž s odvahou tvoří většinu.",
+    ],
+    "Cukr mamča": [
+      "Nejsilnějším činem ženy je milovat sebe, být sama sebou a zářit mezi těmi, kteří nikdy nevěřili, že to dokáže.",
+      "Když se žena stane svou nejlepší přítelkyní, život je jednodušší.",
+      "Rozhodla jsem se udělat zbytek svého života tím nejlepším obdobím mého života.",
+      "Nenech, aby názor někoho jiného na tebe stal se tvou realitou.",
+      "Když dáváš radost jiným lidem, dostáváš více radosti zpět.",
+      "Optimismus je víra, která vede k dosažení. Nic se nedá udělat bez naděje a důvěry.",
+      "Neseš pas k vlastnímu štěstí.",
+      "Pokud ti nedají místo u stolu, přines si skládací židli.",
+    ],
   };
-  const name = person ? (vocative[person.name] || person.name) : "kámo";
-  const messages = [
-    `Dneska ti to fakt sluší, ${name}. ✨`,
-    `Dneska to zvládneš v klidu, ${name}. 💫`,
-    `Tvoje energie dneska stojí za to, ${name}.`,
-    `Nezapomeň se dneska taky trochu pochválit, ${name}.`,
-    `Dneska je dobrej den udělat něco jen pro sebe, ${name}.`,
-    `I malý krok dopředu se počítá. Jen tak dál, ${name}.`,
-    `Úsměv ti dneska sedne víc než ranní budík, ${name}. ☀️`,
-    `Jsi dál, než sis před časem myslel, ${name}.`,
-    `Dneska na sebe netlač. Stačí být svůj, ${name}.`,
-    `Někdo dneska určitě ocení, že jsi přesně takový, jaký jsi, ${name}.`,
+
+  const fallback = [
+    "Začni tam, kde jsi. Použij, co máš. Dělej, co můžeš.",
+    "Pokud to můžeš snít, můžeš to udělat.",
+    "Jedna malá pozitivní myšlenka ráno může změnit celý tvůj den.",
   ];
+
+  const personName = person?.name || "";
+  const quotes = quotesByPerson[personName] || fallback;
   const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  // Speciální citát pro 1. 10. 2026.
+  if (today === "2026-10-01") {
+    return "Jedna malá pozitivní myšlenka ráno může změnit celý tvůj den.";
+  }
+
   const start = new Date(now.getFullYear(), 0, 0);
   const day = Math.floor((now.getTime() - start.getTime()) / 86400000);
-  return messages[day % messages.length];
+  const personOffset = personName.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return quotes[(day + personOffset) % quotes.length];
 }
 
 function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift, tibiWeek, setTibiWeek, tibiOdd, tibiEven, davidSchool, davidWeek, setDavidWeek, practice, openPractice, deletePractice }: { people:Person[]; shifts:Shift[]; currentPerson:Person|null; events:EventItem[]; nameDay:string; openAddShift:(date?:string)=>void; tibiWeek:"odd"|"even"; setTibiWeek:(v:"odd"|"even")=>void; tibiOdd:WeekSchedule;tibiEven:WeekSchedule;davidSchool:WeekSchedule;davidWeek:"odd"|"even";setDavidWeek:(v:"odd"|"even")=>void;practice:PracticeItem[];openPractice:(date?:string)=>void;deletePractice:(id:string)=>Promise<void>; }) {
@@ -1040,7 +1175,45 @@ function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerso
   const peopleById=useMemo(() => new Map(people.map(person=>[person.id,person])),[people]);
   const today=isoToday();
   const octoberAutumn=autumn&&month===9;
-  return <div><PageHeader eyebrow="KALENDÁŘ" title="Směny" description="Přehled směn všech členů." action={<button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white hover:brightness-110"><Icon name="plus" size={16}/>Přidat směnu</button>}/><div className="mb-5 flex flex-wrap gap-2"><FilterButton active={filter==="all"} onClick={()=>setFilter("all")} label="Všechny"/>{(Object.keys(shiftInfo) as ShiftType[]).map(t=><FilterButton key={t} active={filter===t} onClick={()=>setFilter(t)} label={shiftInfo[t].short} color={shiftInfo[t].color} icon={shiftInfo[t].icon}/>)}</div><div className="mb-5 flex gap-2 overflow-x-auto"><button type="button" onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(null);}} aria-pressed={!selectedPerson} className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${!selectedPerson?"border-white/20 bg-white/[0.10] text-white shadow-[0_8px_22px_rgba(0,0,0,.16)]":"border-white/[0.06] text-slate-500 hover:bg-white/[0.04] hover:text-white"}`}>Všichni</button>{people.map(p=><button type="button" key={p.id} onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(p);}} className="flex items-center gap-2 rounded-xl border border-white/[0.06] px-3 py-2 text-xs transition hover:bg-white/[0.03]" style={selectedPerson?.id===p.id?{borderColor:`${p.color}60`,background:`${p.color}10`}:undefined}><Avatar person={p} size={23}/>{p.name}</button>)}</div><div className="-mx-1 overflow-x-auto pb-2"><div className="min-w-[760px] px-1"><Card className={`relative overflow-hidden ${octoberAutumn?"october-calendar":""}`}>{octoberAutumn&&<><div className="pointer-events-none absolute right-4 top-2 z-10 text-5xl opacity-30 autumn-leaf-accent">🍁</div><div className="pointer-events-none absolute bottom-8 left-3 z-10 text-4xl opacity-20 autumn-leaf-accent">🍂</div><div className="pointer-events-none absolute left-[35%] top-[42%] z-10 text-3xl opacity-[0.08]">🍁</div><div className="pointer-events-none absolute right-[28%] bottom-[18%] z-10 text-3xl opacity-[0.07]">🍂</div></>}<div className={`calendar-head flex items-center justify-between border-b border-white/[0.06] p-4`}><button onClick={()=>changeMonth(-1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="left"/></button><div className="text-center"><div className={`text-lg font-bold capitalize ${octoberAutumn?"autumn-neon-title":""}`}>{octoberAutumn&&<span className="mr-2">🍁</span>}{monthName(year,month)}{octoberAutumn&&<span className="ml-2">🍂</span>}</div><div className="text-xs text-slate-500">{year}</div></div><button onClick={()=>changeMonth(1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="right"/></button></div><div className="calendar-weekdays grid grid-cols-7 border-b border-white/[0.06]">{["Po","Út","St","Čt","Pá","So","Ne"].map((d,idx)=><div key={d} className={`p-3 text-center text-[10px] font-bold ${idx>=5?"text-slate-500":"text-slate-600"}`}>{d}</div>)}</div><div className="grid grid-cols-7">{cells.map((day,i)=>{if(!day)return <div key={`e${i}`} className="calendar-empty min-h-[105px] border-b border-r border-white/[0.04] bg-black/10"/>; const date=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`; const isToday=date===today; const weekend=(i%7)>=5; return <div key={date} onClick={()=>{if(!currentPerson)return;openAddShift(date)}} className={`calendar-cell relative min-h-[105px] cursor-pointer border-b border-r border-white/[0.04] p-2 transition hover:bg-white/[0.035] ${weekend?"bg-white/[0.012]":""}`} style={isToday?{background:"color-mix(in srgb, var(--theme) 7%, transparent)",boxShadow:"inset 0 0 0 1px color-mix(in srgb, var(--theme) 28%, transparent)"}:undefined}><div className={`mb-2 flex h-6 w-6 items-center justify-center rounded-lg text-xs font-semibold ${isToday?"theme-soft":"text-slate-500"}`}>{day}</div>{(birthdaysByMonthDay.get(date.slice(5))?.length??0)>0&&<div className="mb-1.5 space-y-1">{birthdaysByMonthDay.get(date.slice(5))!.map(p=><div key={`birthday-${p.id}`} className="truncate rounded-lg border px-2 py-1 text-[9px] font-bold" style={{borderColor:`${p.color}45`,background:`${p.color}12`,color:p.color}}>🎂 {p.name} — {birthdayAgeOnDate(p.birthday,date)} let</div>)}</div>}<div className="space-y-1">{(shiftsByDate.get(date)??[]).map(s=>{const p=peopleById.get(s.userId);if(!p)return null;return <div key={s.id} onClick={e=>{e.stopPropagation();setDetailShift(s)}} className="rounded-lg px-2 py-1.5 text-[9px] font-semibold transition hover:brightness-110" style={{
+
+  const printShifts = () => {
+    const monthStart=`${year}-${String(month+1).padStart(2,"0")}-01`;
+    const monthEnd=`${year}-${String(month+1).padStart(2,"0")}-${String(daysInMonth(year,month)).padStart(2,"0")}`;
+    const printable = shifts
+      .filter(s => visibleIds.has(s.userId))
+      .filter(s => filter === "all" || s.type === filter)
+      .filter(s => s.type === "vacation" ? (s.endDate || s.date) >= monthStart && s.date <= monthEnd : s.date >= monthStart && s.date <= monthEnd)
+      .sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
+
+    const rows = printable.map(s => {
+      const person = peopleById.get(s.userId);
+      if (!person) return "";
+      const worked = shiftWorkedMinutes(s, person);
+      const dateLabel = s.type === "vacation" && s.endDate && s.endDate !== s.date
+        ? `${formatDate(s.date)} – ${formatDate(s.endDate)}`
+        : formatDate(s.date);
+      const timeLabel = s.type === "vacation" || s.type === "sick" ? "—" : `${s.startTime}–${s.endTime}`;
+      const workedLabel = s.type === "vacation" || s.type === "sick" ? "—" : formatWorkedMinutes(worked);
+      const breakLabel = BREAK_DEDUCTION_EMAILS.has(person.email.toLowerCase()) && s.type !== "vacation" && s.type !== "sick" ? " (po odečtení 30 min pauzy)" : "";
+      return `<tr><td>${escapePrintHtml(dateLabel)}</td><td><strong>${escapePrintHtml(person.name)}</strong></td><td><span class="badge">${escapePrintHtml(shiftInfo[s.type].label)}</span></td><td>${escapePrintHtml(timeLabel)}</td><td>${escapePrintHtml(workedLabel + breakLabel)}</td><td>${escapePrintHtml(s.note || "")}</td></tr>`;
+    }).join("");
+
+    const totalMinutes = printable.reduce((sum,s)=>{
+      const person=peopleById.get(s.userId);
+      return sum + shiftWorkedMinutes(s,person);
+    },0);
+
+    const selectedLabel = selectedPerson ? selectedPerson.name : "Všichni";
+    const filterLabel = filter === "all" ? "Všechny typy" : shiftInfo[filter].label;
+    openPrintWindow(
+      `Směnovník – ${monthName(year,month)} ${year}`,
+      `<div class="header"><h1>Směnovník – rozpis směn</h1><div class="muted">${escapePrintHtml(monthName(year,month))} ${year} · ${escapePrintHtml(selectedLabel)} · ${escapePrintHtml(filterLabel)}</div></div>
+       <div class="summary"><div class="box">Směn<strong>${printable.length}</strong></div><div class="box">Odpracováno<strong>${escapePrintHtml(formatWorkedMinutes(totalMinutes))}</strong></div><div class="box">Osoby<strong>${visible.length}</strong></div><div class="box">Pauza<strong>Tibík, Kuba, Lucka −30 min / směna</strong></div></div>
+       <table><thead><tr><th>Datum</th><th>Osoba</th><th>Typ směny</th><th>Čas</th><th>Odpracováno</th><th>Poznámka</th></tr></thead><tbody>${rows || `<tr><td colspan="6">Pro zvolený měsíc nejsou žádné směny.</td></tr>`}</tbody></table>
+       <div class="foot">Vygenerováno ze Směnovníku. Dovolená a nemoc nejsou započítané do odpracovaného času.</div>`
+    );
+  };
+  return <div><PageHeader eyebrow="KALENDÁŘ" title="Směny" description="Přehled směn všech členů." action={<div className="flex flex-wrap gap-2"><button type="button" onClick={printShifts} className="flex items-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.04] px-4 py-2.5 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]"><Icon name="calendar" size={16}/>Vytisknout rozpis</button><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white hover:brightness-110"><Icon name="plus" size={16}/>Přidat směnu</button></div>}/><div className="mb-5 flex flex-wrap gap-2"><FilterButton active={filter==="all"} onClick={()=>setFilter("all")} label="Všechny"/>{(Object.keys(shiftInfo) as ShiftType[]).map(t=><FilterButton key={t} active={filter===t} onClick={()=>setFilter(t)} label={shiftInfo[t].short} color={shiftInfo[t].color} icon={shiftInfo[t].icon}/>)}</div><div className="mb-5 flex gap-2 overflow-x-auto"><button type="button" onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(null);}} aria-pressed={!selectedPerson} className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${!selectedPerson?"border-white/20 bg-white/[0.10] text-white shadow-[0_8px_22px_rgba(0,0,0,.16)]":"border-white/[0.06] text-slate-500 hover:bg-white/[0.04] hover:text-white"}`}>Všichni</button>{people.map(p=><button type="button" key={p.id} onClick={(e)=>{e.preventDefault();e.stopPropagation();setSelectedPerson(p);}} className="flex items-center gap-2 rounded-xl border border-white/[0.06] px-3 py-2 text-xs transition hover:bg-white/[0.03]" style={selectedPerson?.id===p.id?{borderColor:`${p.color}60`,background:`${p.color}10`}:undefined}><Avatar person={p} size={23}/>{p.name}</button>)}</div><div className="-mx-1 overflow-x-auto pb-2"><div className="min-w-[760px] px-1"><Card className={`relative overflow-hidden ${octoberAutumn?"october-calendar":""}`}>{octoberAutumn&&<><div className="pointer-events-none absolute right-4 top-2 z-10 text-5xl opacity-30 autumn-leaf-accent">🍁</div><div className="pointer-events-none absolute bottom-8 left-3 z-10 text-4xl opacity-20 autumn-leaf-accent">🍂</div><div className="pointer-events-none absolute left-[35%] top-[42%] z-10 text-3xl opacity-[0.08]">🍁</div><div className="pointer-events-none absolute right-[28%] bottom-[18%] z-10 text-3xl opacity-[0.07]">🍂</div></>}<div className={`calendar-head flex items-center justify-between border-b border-white/[0.06] p-4`}><button onClick={()=>changeMonth(-1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="left"/></button><div className="text-center"><div className={`text-lg font-bold capitalize ${octoberAutumn?"autumn-neon-title":""}`}>{octoberAutumn&&<span className="mr-2">🍁</span>}{monthName(year,month)}{octoberAutumn&&<span className="ml-2">🍂</span>}</div><div className="text-xs text-slate-500">{year}</div></div><button onClick={()=>changeMonth(1)} className="rounded-xl p-2 text-slate-500 hover:bg-white/[0.05]"><Icon name="right"/></button></div><div className="calendar-weekdays grid grid-cols-7 border-b border-white/[0.06]">{["Po","Út","St","Čt","Pá","So","Ne"].map((d,idx)=><div key={d} className={`p-3 text-center text-[10px] font-bold ${idx>=5?"text-slate-500":"text-slate-600"}`}>{d}</div>)}</div><div className="grid grid-cols-7">{cells.map((day,i)=>{if(!day)return <div key={`e${i}`} className="calendar-empty min-h-[105px] border-b border-r border-white/[0.04] bg-black/10"/>; const date=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`; const isToday=date===today; const weekend=(i%7)>=5; return <div key={date} onClick={()=>{if(!currentPerson)return;openAddShift(date)}} className={`calendar-cell relative min-h-[105px] cursor-pointer border-b border-r border-white/[0.04] p-2 transition hover:bg-white/[0.035] ${weekend?"bg-white/[0.012]":""}`} style={isToday?{background:"color-mix(in srgb, var(--theme) 7%, transparent)",boxShadow:"inset 0 0 0 1px color-mix(in srgb, var(--theme) 28%, transparent)"}:undefined}><div className={`mb-2 flex h-6 w-6 items-center justify-center rounded-lg text-xs font-semibold ${isToday?"theme-soft":"text-slate-500"}`}>{day}</div>{(birthdaysByMonthDay.get(date.slice(5))?.length??0)>0&&<div className="mb-1.5 space-y-1">{birthdaysByMonthDay.get(date.slice(5))!.map(p=><div key={`birthday-${p.id}`} className="truncate rounded-lg border px-2 py-1 text-[9px] font-bold" style={{borderColor:`${p.color}45`,background:`${p.color}12`,color:p.color}}>🎂 {p.name} — {birthdayAgeOnDate(p.birthday,date)} let</div>)}</div>}<div className="space-y-1">{(shiftsByDate.get(date)??[]).map(s=>{const p=peopleById.get(s.userId);if(!p)return null;return <div key={s.id} onClick={e=>{e.stopPropagation();setDetailShift(s)}} className="rounded-lg px-2 py-1.5 text-[9px] font-semibold transition hover:brightness-110" style={{
   background:`linear-gradient(135deg, ${shiftInfo[s.type].color}55, ${shiftInfo[s.type].color}20)`,
   color:"#fff",
   border:`1px solid ${shiftInfo[s.type].color}88`,
@@ -1157,8 +1330,25 @@ function EventsPage({events,people,currentPerson,openCreate,deleteEvent}:{events
 function StatsPage({stats,selectedId,setSelectedId,statsWeeks,setStatsWeeks,statsWeekOffset,setStatsWeekOffset,statsPeriod}:{stats:{person:Person;shifts:number;hours:number;minutes:number;totalMinutes:number;averageMinutesPerWeek:number;ratingAverage:number|null;ratedShifts:number;morning:number;afternoon:number;intershift:number;night:number;midnight:number;all_day:number;emergency:number;vacation:number;sick:number}[];selectedId:string|null;setSelectedId:(id:string)=>void;statsWeeks:1|4|8|"all";setStatsWeeks:(value:1|4|8|"all")=>void;statsWeekOffset:number;setStatsWeekOffset:React.Dispatch<React.SetStateAction<number>>;statsPeriod:{start:string;end:string}|null}){
   const selected=stats.find(s=>s.person.id===selectedId)||stats[0];
   const periodLabel=statsPeriod?`${new Date(`${statsPeriod.start}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric",year:"numeric"})} – ${new Date(`${statsPeriod.end}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric",year:"numeric"})}`:"Všechny uložené směny";
+
+  const printStats = () => {
+    const maxMinutes = Math.max(1, ...stats.map(s => s.totalMinutes));
+    const rows = stats.map(s => `<tr><td><strong>${escapePrintHtml(s.person.name)}</strong></td><td>${s.shifts}</td><td>${escapePrintHtml(formatWorkedMinutes(s.totalMinutes))}</td><td>${escapePrintHtml((s.averageMinutesPerWeek/60).toLocaleString("cs-CZ",{minimumFractionDigits:1,maximumFractionDigits:1}) + " h")}</td><td>${s.ratingAverage===null?"—":escapePrintHtml(`${s.ratingAverage.toFixed(1)}/5 (${s.ratedShifts}×)`)}</td></tr>`).join("");
+    const bars = stats.map(s => `<div class="bar-row"><strong>${escapePrintHtml(s.person.name)}</strong><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,(s.totalMinutes/maxMinutes)*100)}%"></div></div><div>${escapePrintHtml(formatWorkedMinutes(s.totalMinutes))}</div></div>`).join("");
+    const selectedDetail = selected ? `<h2>Detail – ${escapePrintHtml(selected.person.name)}</h2><div class="summary"><div class="box">Směny<strong>${selected.shifts}</strong></div><div class="box">Čas<strong>${escapePrintHtml(formatWorkedMinutes(selected.totalMinutes))}</strong></div><div class="box">Průměr / týden<strong>${escapePrintHtml((selected.averageMinutesPerWeek/60).toLocaleString("cs-CZ",{minimumFractionDigits:1,maximumFractionDigits:1}) + " h")}</strong></div><div class="box">Hodnocení<strong>${selected.ratingAverage===null?"—":escapePrintHtml(selected.ratingAverage.toFixed(1)+"/5")}</strong></div></div><table><thead><tr><th>Ranní</th><th>Odpolední</th><th>Mezisměna</th><th>Noční</th><th>Polonoc</th><th>Celodenní</th><th>Mimořádná</th><th>Dovolená</th><th>Nemoc</th></tr></thead><tbody><tr><td>${selected.morning}</td><td>${selected.afternoon}</td><td>${selected.intershift}</td><td>${selected.night}</td><td>${selected.midnight}</td><td>${selected.all_day}</td><td>${selected.emergency}</td><td>${selected.vacation}</td><td>${selected.sick}</td></tr></tbody></table>` : "";
+
+    openPrintWindow(
+      "Směnovník – statistiky",
+      `<div class="header"><h1>Směnovník – statistiky</h1><div class="muted">Období: ${escapePrintHtml(periodLabel)}</div></div>
+       <table><thead><tr><th>Osoba</th><th>Počet směn</th><th>Odpracováno</th><th>Průměr za týden</th><th>Hodnocení</th></tr></thead><tbody>${rows}</tbody></table>
+       <h2>Porovnání odpracovaných hodin</h2>${bars}
+       ${selectedDetail}
+       <div class="foot">U Tibíka, Kuby a Lucky se z každé odpracované směny automaticky odečítá 30 minut neplacené pauzy. Dovolená a nemoc se do odpracovaného času nezapočítávají.</div>`,
+      true
+    );
+  };
   return <div>
-    <PageHeader eyebrow="ČÍSLA" title="Statistiky" description="Směny a odpracované hodiny všech členů."/>
+    <PageHeader eyebrow="ČÍSLA" title="Statistiky" description="Směny a odpracované hodiny všech členů." action={<button type="button" onClick={printStats} className="flex items-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.04] px-4 py-2.5 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]"><Icon name="chart" size={16}/>Vytisknout report</button>}/>
     <AutumnSectionTitle text="Podzimní statistiky"/>
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
       <div className="flex flex-wrap gap-2">{([{value:1,label:"Týden"},{value:4,label:"4 týdny"},{value:8,label:"8 týdnů"},{value:"all",label:"Celkem"}] as const).map(option=><button key={option.value} onClick={()=>{setStatsWeeks(option.value);setStatsWeekOffset(0);}} className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${statsWeeks===option.value?"theme-soft theme-border text-white":"border-white/[0.08] bg-white/[0.025] text-slate-400 hover:bg-white/[0.05] hover:text-white"}`}>{option.label}</button>)}</div>
@@ -1233,7 +1423,7 @@ function SettingsPage({currentPerson,setPeople,themeColor,setThemeColor,themeCol
         <button onClick={()=>{setThemeColor(APP_ACCENT);setThemeColor2(APP_ACCENT_SECONDARY);}} className="mt-4 rounded-xl border border-white/[0.08] px-4 py-2.5 text-xs text-slate-400 hover:bg-white/[0.04] hover:text-white">Vrátit výchozí vzhled</button>
       </div>
     </Card>
-    <Card className="p-6 xl:col-span-2"><div className="flex items-center gap-2"><Icon name="leaf" size={18}/><h2 className="font-bold">Sezónní vzhled a animace</h2></div><p className="mt-3 text-sm text-slate-400">Přepni mezi podzimním Směnovníkem 2.0 a původním klasickým vzhledem. Animace lze vypnout zvlášť.</p><div className="mt-5 grid gap-3 md:grid-cols-2"><button type="button" onClick={()=>setThemeMode("autumn")} className={`rounded-2xl border p-5 text-left transition ${themeMode==="autumn"?"border-orange-300/35 bg-orange-400/10":"border-white/[0.08] bg-black/15"}`}><div className="text-2xl">🍁</div><div className="mt-2 font-bold">Podzimní motiv</div><div className="mt-1 text-xs text-slate-500">Měděná, oranžová, listí a říjnové prvky.</div></button><button type="button" onClick={()=>setThemeMode("classic")} className={`rounded-2xl border p-5 text-left transition ${themeMode==="classic"?"theme-border theme-soft":"border-white/[0.08] bg-black/15"}`}><div className="text-2xl">✨</div><div className="mt-2 font-bold">Klasický motiv</div><div className="mt-1 text-xs text-slate-500">Původní barevný Směnovník.</div></button></div><button type="button" onClick={()=>setAnimationsEnabled(!animationsEnabled)} className="relative mt-4 flex w-full items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-black/15 p-4 text-left"><div className="pointer-events-none absolute -left-3 -bottom-6 text-7xl opacity-[0.08]">🍂</div><div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-300/15 bg-orange-400/[0.06] text-2xl">🍁</div><div><div className="text-sm font-bold">Animace</div><div className="mt-1 text-xs text-slate-500">Padání listí a další jemné pohyby.</div></div></div><div className={`relative h-7 w-12 rounded-full p-1 transition ${animationsEnabled?"bg-orange-500":"bg-slate-700"}`}><div className={`h-5 w-5 rounded-full bg-white transition ${animationsEnabled?"translate-x-5":""}`}/></div></button></Card>
+    <Card className="p-6 xl:col-span-2"><div className="flex items-center gap-2"><Icon name="leaf" size={18}/><h2 className="font-bold">Sezónní vzhled a animace</h2></div><p className="mt-3 text-sm text-slate-400">Přepni mezi podzimním Směnovníkem 2.1 a původním klasickým vzhledem. Animace lze vypnout zvlášť.</p><div className="mt-5 grid gap-3 md:grid-cols-2"><button type="button" onClick={()=>setThemeMode("autumn")} className={`rounded-2xl border p-5 text-left transition ${themeMode==="autumn"?"border-orange-300/35 bg-orange-400/10":"border-white/[0.08] bg-black/15"}`}><div className="text-2xl">🍁</div><div className="mt-2 font-bold">Podzimní motiv</div><div className="mt-1 text-xs text-slate-500">Měděná, oranžová, listí a říjnové prvky.</div></button><button type="button" onClick={()=>setThemeMode("classic")} className={`rounded-2xl border p-5 text-left transition ${themeMode==="classic"?"theme-border theme-soft":"border-white/[0.08] bg-black/15"}`}><div className="text-2xl">✨</div><div className="mt-2 font-bold">Klasický motiv</div><div className="mt-1 text-xs text-slate-500">Původní barevný Směnovník.</div></button></div><button type="button" onClick={()=>setAnimationsEnabled(!animationsEnabled)} className="relative mt-4 flex w-full items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-black/15 p-4 text-left"><div className="pointer-events-none absolute -left-3 -bottom-6 text-7xl opacity-[0.08]">🍂</div><div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-300/15 bg-orange-400/[0.06] text-2xl">🍁</div><div><div className="text-sm font-bold">Animace</div><div className="mt-1 text-xs text-slate-500">Padání listí a další jemné pohyby.</div></div></div><div className={`relative h-7 w-12 rounded-full p-1 transition ${animationsEnabled?"bg-orange-500":"bg-slate-700"}`}><div className={`h-5 w-5 rounded-full bg-white transition ${animationsEnabled?"translate-x-5":""}`}/></div></button></Card>
     <Card className="p-6 xl:col-span-2"><div className="flex items-center gap-2"><Icon name="lock" size={18}/><h2 className="font-bold">Změna hesla</h2></div><div className="mt-5 grid gap-3 md:grid-cols-3"><PasswordInput label="Staré heslo" value={oldPassword} onChange={setOldPassword}/><PasswordInput label="Nové heslo" value={newPassword} onChange={setNewPassword}/><PasswordInput label="Nové heslo znovu" value={newAgain} onChange={setNewAgain}/></div><button onClick={changePassword} className="theme-primary mt-5 rounded-xl px-5 py-3 text-xs font-bold text-white hover:brightness-110">Změnit heslo</button>{message&&<div className="mt-4 rounded-xl bg-white/[0.03] px-4 py-3 text-xs text-slate-400">{message}</div>}</Card>
   </div></div>
 }
@@ -1267,9 +1457,26 @@ function DavidPracticeSchedule({practice,canEdit,onAdd,onDelete}:{practice:Pract
   return <div className="relative overflow-hidden rounded-3xl border border-[#5a4637]/55 bg-[linear-gradient(145deg,rgba(30,24,20,.97),rgba(15,13,12,.98))] p-5 shadow-[0_18px_50px_rgba(0,0,0,.28)] sm:p-6"><div className="pointer-events-none absolute -right-16 -top-14 text-7xl opacity-[0.05]">🍂</div><div className="relative mb-5 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#6e5a49]/40 bg-[#2b241f] text-[#c9b7a7]"><Icon name="briefcase"/></div><div><h3 className="font-bold text-[#f1e7dc]">Davčův lichý týden – praxe</h3><p className="text-xs text-[#9f8d7e]">Klikni na den od pondělí do soboty a nastav čas od–do.</p></div></div><div className="relative grid gap-3 md:grid-cols-3 xl:grid-cols-6">{days.map(({day,date})=>{const item=practice.find(p=>p.date===date);return <button key={date} type="button" disabled={!canEdit} onClick={()=>onAdd(date)} className="min-h-[140px] rounded-2xl border border-[#6e5a49]/40 bg-[linear-gradient(145deg,rgba(53,43,35,.88),rgba(29,25,22,.94))] p-4 text-left transition hover:-translate-y-1 hover:border-[#8b735e]/65 hover:bg-[linear-gradient(145deg,rgba(63,51,41,.94),rgba(35,30,25,.96))] disabled:cursor-default"><div className="text-xs font-black text-[#d8c8b9]">{day}</div><div className="mt-1 text-[11px] text-[#7f7064]">{new Date(`${date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})}</div>{item?<><div className="mt-5 text-lg font-black text-[#f4ece4]">{item.startTime}–{item.endTime}</div><div className="mt-2 line-clamp-2 text-xs text-[#a89687]">{item.note||"Praxe"}</div>{canEdit&&<span onClick={e=>{e.stopPropagation();onDelete(item.id)}} className="mt-3 inline-block text-[10px] text-red-400">Smazat</span>}</>:<><div className="mt-5 text-2xl text-[#8f7d6f] opacity-60">＋</div><div className="mt-2 text-xs text-[#8f7d6f]">{canEdit?"Nastavit praxi":"Bez zapsané praxe"}</div></>}</button>})}</div></div>
 }
 
-function UpdatesPage(){return <div><PageHeader eyebrow="SMĚNOVNÍK 2.0" title="Aktualizace" description="Co je nového a co se změnilo."/><div className="grid gap-5 lg:grid-cols-[.7fr_1.3fr]"><Card className="relative overflow-hidden p-6"><div className="text-5xl">🍁</div><div className="mt-5 text-3xl font-black">Verze {APP_VERSION}</div><div className="mt-2 text-sm text-slate-500">Podzimní aktualizace</div><div className="mt-6 rounded-2xl border border-orange-300/10 bg-orange-300/[0.04] p-4 text-sm leading-6 text-slate-300">Nový vzhled, přehlednější informace, lepší praxe, detail událostí a nové možnosti nastavení.</div></Card><Card className="p-6"><h2 className="font-bold">Co je nového</h2><div className="mt-5 space-y-3">{UPDATE_ITEMS.map((item,index)=><div key={item} className="flex gap-3 rounded-2xl border border-white/[0.06] bg-black/15 p-4"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-400/10 text-orange-300"><Icon name="check" size={15}/></div><div><div className="text-[10px] font-bold uppercase tracking-[.14em] text-slate-600">Změna {index+1}</div><div className="mt-1 text-sm text-slate-300">{item}</div></div></div>)}</div></Card></div></div>}
+function UpdatesPage(){
+  const UpdateList=({items}:{items:readonly string[]})=><div className="mt-5 space-y-3">{items.map((item,index)=><div key={item} className="flex gap-3 rounded-2xl border border-white/[0.06] bg-black/15 p-4"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-400/10 text-orange-300"><Icon name="check" size={15}/></div><div><div className="text-[10px] font-bold uppercase tracking-[.14em] text-slate-600">Změna {index+1}</div><div className="mt-1 text-sm text-slate-300">{item}</div></div></div>)}</div>;
+  return <div>
+    <PageHeader eyebrow="SMĚNOVNÍK" title="Aktualizace" description="Co je nového a co se změnilo."/>
 
-function UpdateIntroModal({onDone}:{onDone:()=>void}){return <Modal onClose={()=>{}}><div className="text-center"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-400/10 text-3xl">🍂</div><div className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-orange-300">Směnovník {APP_VERSION}</div><h2 className="mt-2 text-2xl font-black">Vítej v podzimní aktualizaci</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Směnovník dostal nový vzhled a několik větších úprav.</p></div><div className="mt-6 max-h-[42vh] space-y-2 overflow-y-auto pr-1">{UPDATE_ITEMS.map(item=><div key={item} className="flex gap-3 rounded-xl bg-white/[0.025] p-3"><span className="text-orange-300">✓</span><span className="text-sm text-slate-300">{item}</span></div>)}</div><button type="button" onClick={onDone} className="mt-6 w-full rounded-2xl theme-primary py-3.5 text-sm font-black text-white">Super, přečetl jsem si to</button></Modal>}
+    <div className="grid gap-5 lg:grid-cols-[.7fr_1.3fr]">
+      <Card className="relative overflow-hidden p-6"><div className="text-5xl">🍁</div><div className="mt-5 text-3xl font-black">Aktualizace 2.0</div><div className="mt-2 text-sm text-slate-500">Podzimní aktualizace</div><div className="mt-6 rounded-2xl border border-orange-300/10 bg-orange-300/[0.04] p-4 text-sm leading-6 text-slate-300">Nový vzhled, přehlednější informace, lepší praxe, detail událostí a nové možnosti nastavení.</div></Card>
+      <Card className="p-6"><h2 className="font-bold">Co přinesla verze 2.0</h2><UpdateList items={UPDATE_ITEMS_20}/></Card>
+    </div>
+
+    <div className="my-8 flex items-center gap-3"><div className="h-px flex-1 bg-gradient-to-r from-transparent via-orange-300/20 to-orange-300/40"/><div className="rounded-full border border-orange-300/20 bg-orange-400/[0.06] px-4 py-2 text-xs font-black uppercase tracking-[.18em] text-orange-300">Aktualizace 2.1</div><div className="h-px flex-1 bg-gradient-to-l from-transparent via-orange-300/20 to-orange-300/40"/></div>
+
+    <div className="grid gap-5 lg:grid-cols-[.7fr_1.3fr]">
+      <Card className="relative overflow-hidden p-6"><div className="text-5xl">🖨️</div><div className="mt-5 text-3xl font-black">Aktualizace 2.1</div><div className="mt-2 text-sm text-slate-500">Tisk, přesnější čas a nové citáty</div><div className="mt-6 rounded-2xl border border-orange-300/10 bg-orange-300/[0.04] p-4 text-sm leading-6 text-slate-300">Přidali jsme tisk směn a statistik, přesnější počítání pracovní doby a nové denní motivační citáty.</div></Card>
+      <Card className="p-6"><h2 className="font-bold">Co je nového ve verzi 2.1</h2><UpdateList items={UPDATE_ITEMS_21}/></Card>
+    </div>
+  </div>;
+}
+
+function UpdateIntroModal({onDone}:{onDone:()=>void}){return <Modal onClose={()=>{}}><div className="text-center"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-400/10 text-3xl">🍂</div><div className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-orange-300">Směnovník {APP_VERSION}</div><h2 className="mt-2 text-2xl font-black">Vítej v aktualizaci 2.1</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Přidali jsme tisk, přesnější pracovní dobu a nové denní citáty.</p></div><div className="mt-6 max-h-[42vh] space-y-2 overflow-y-auto pr-1">{UPDATE_ITEMS_21.map(item=><div key={item} className="flex gap-3 rounded-xl bg-white/[0.025] p-3"><span className="text-orange-300">✓</span><span className="text-sm text-slate-300">{item}</span></div>)}</div><button type="button" onClick={onDone} className="mt-6 w-full rounded-2xl theme-primary py-3.5 text-sm font-black text-white">Super, přečetl jsem si to</button></Modal>}
 
 function ShiftSavedToast({animations}:{animations:boolean}){return <div className="pointer-events-none fixed inset-0 z-[140] flex items-start justify-center pt-24">{animations&&<div className="absolute inset-0 overflow-hidden">{Array.from({length:16},(_,i)=><span key={i} className="leaf-fall absolute -top-10 text-2xl" style={{left:`${(i*7)%100}%`,animationDelay:`${(i%6)*.12}s`,animationDuration:`${1.6+(i%4)*.25}s`}}>{i%2?"🍂":"🍁"}</span>)}</div>}<div className="relative rounded-2xl border border-emerald-300/20 bg-[#0b1510]/95 px-5 py-3 shadow-2xl backdrop-blur-xl"><div className="flex items-center gap-3 text-sm font-bold text-emerald-200"><Icon name="check" size={18}/>Směna byla úspěšně uložena</div></div></div>}
 
