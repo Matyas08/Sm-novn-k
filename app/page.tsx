@@ -82,7 +82,7 @@ const UPDATE_ITEMS_21 = [
   "U Tibíka, Kuby a Lucky se z každé odpracované směny automaticky odečítá 30 minut za pracovní přestávku.",
   "Pauzy se promítají do celkových hodin, průměru za týden, porovnání členů i tiskových souhrnů.",
   "Původní denní povzbuzení nahradily nové motivační citáty, které se každý den mění.",
-  "Každý člen má vlastní výběr citátů, aby se denní povzbuzení lépe hodilo právě k němu.",
+  "Všechny citáty se nově postupně střídají u všech členů.",
   "U denního citátu se už nezobrazuje jméno člena ani autor — zůstává jen samotný citát.",
   "Proběhly také další drobné úpravy pro přesnější výpočty a přehlednější používání Směnovníku.",
 ] as const;
@@ -1049,7 +1049,7 @@ function dailyBoost(person: Person | null) {
   ];
 
   const personName = person?.name || "";
-  const quotes = quotesByPerson[personName] || fallback;
+  const allQuotes = [...new Set([...Object.values(quotesByPerson).flat(), ...fallback])];
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
@@ -1060,8 +1060,16 @@ function dailyBoost(person: Person | null) {
 
   const start = new Date(now.getFullYear(), 0, 0);
   const day = Math.floor((now.getTime() - start.getTime()) / 86400000);
-  const personOffset = personName.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  return quotes[(day + personOffset) % quotes.length];
+
+  // Každý člen začíná na jiném místě společného seznamu,
+  // ale postupně se mu protočí úplně všechny citáty.
+  const personIndex = Math.max(
+    0,
+    ["Tibík", "Davča", "Matýsek", "Kuba", "Cukr mamča"].indexOf(personName)
+  );
+  const personOffset = personIndex * 7;
+
+  return allQuotes[(day + personOffset) % allQuotes.length];
 }
 
 function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift, tibiWeek, setTibiWeek, tibiOdd, tibiEven, davidSchool, davidWeek, setDavidWeek, practice, openPractice, deletePractice }: { people:Person[]; shifts:Shift[]; currentPerson:Person|null; events:EventItem[]; nameDay:string; openAddShift:(date?:string)=>void; tibiWeek:"odd"|"even"; setTibiWeek:(v:"odd"|"even")=>void; tibiOdd:WeekSchedule;tibiEven:WeekSchedule;davidSchool:WeekSchedule;davidWeek:"odd"|"even";setDavidWeek:(v:"odd"|"even")=>void;practice:PracticeItem[];openPractice:(date?:string)=>void;deletePractice:(id:string)=>Promise<void>; }) {
