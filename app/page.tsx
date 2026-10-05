@@ -877,10 +877,18 @@ let weeksCount: number = statsWeeks === "all" ? 1 : statsWeeks;
     style={{
       "--theme": activeThemeColor,
       "--theme2": activeThemeColor2,
-      backgroundColor: themeMode === "autumn" ? "#100904" : "#0b0908",
+      backgroundColor: themeMode === "autumn" ? "#090604" : "#0b0908",
       backgroundImage: themeMode === "autumn"
-        ? `radial-gradient(circle at 14% 8%, rgba(255,122,0,.28), transparent 30%), radial-gradient(circle at 82% 4%, rgba(255,210,31,.20), transparent 26%), radial-gradient(circle at 65% 72%, rgba(168,63,10,.18), transparent 34%), linear-gradient(160deg,#160b04 0%,#0d0906 38%,#100704 72%,#070605 100%)`
+        ? `linear-gradient(180deg, rgba(8,5,3,.02) 0px, rgba(8,5,3,.12) 70px, rgba(8,5,3,.58) 145px, #090604 235px),
+           url("/smenovnik-autumn-header.jpg"),
+           radial-gradient(circle at 14% 8%, rgba(255,122,0,.18), transparent 30%),
+           radial-gradient(circle at 82% 4%, rgba(255,210,31,.12), transparent 26%),
+           linear-gradient(160deg,#120904 0%,#0d0906 45%,#090604 100%)`
         : `radial-gradient(circle at 15% 10%, ${themeColor}18, transparent 32%), radial-gradient(circle at 85% 0%, ${themeColor2}16, transparent 30%), linear-gradient(180deg,#050711 0%,#070a12 55%,#05070d 100%)`,
+      backgroundRepeat: themeMode === "autumn" ? "no-repeat, no-repeat, no-repeat, no-repeat, no-repeat" : "no-repeat",
+      backgroundPosition: themeMode === "autumn" ? "top center, top center, top center, top center, top center" : "top center",
+      backgroundSize: themeMode === "autumn" ? "100% 250px, 100% auto, cover, cover, cover" : "cover",
+      backgroundAttachment: themeMode === "autumn" ? "scroll, scroll, fixed, fixed, fixed" : "fixed",
     } as React.CSSProperties}
   >
     <style jsx global>{`
@@ -897,6 +905,16 @@ let weeksCount: number = statsWeeks === "all" ? 1 : statsWeeks;
       .leaf-drift { animation: leafDrift 5s ease-in-out infinite; }
       .classic-theme .autumn-only { display: none !important; }
       .autumn-theme { color-scheme: dark; }
+      .autumn-theme::before {
+        content:"";
+        position:fixed;
+        inset:0 0 auto 0;
+        height:235px;
+        pointer-events:none;
+        z-index:0;
+        background:linear-gradient(90deg,rgba(0,0,0,.30),transparent 22%,transparent 78%,rgba(0,0,0,.28));
+      }
+      .autumn-theme > * { position:relative; z-index:1; }
       .autumn-theme .theme-primary { background: linear-gradient(135deg,#ff6a00 0%,#ff9a00 52%,#ffd21f 100%) !important; color:#170b00 !important; box-shadow: 0 10px 32px rgba(255,111,0,.34), 0 0 42px rgba(255,202,31,.18) !important; }
       .autumn-theme .theme-soft { background: linear-gradient(135deg,rgba(255,122,0,.18),rgba(255,210,31,.08)) !important; color:#ffd56a !important; border-color:rgba(255,151,37,.42) !important; }
       .autumn-theme .theme-text { color:#ffb347 !important; }
