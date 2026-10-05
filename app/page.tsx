@@ -877,19 +877,20 @@ let weeksCount: number = statsWeeks === "all" ? 1 : statsWeeks;
     style={{
       "--theme": activeThemeColor,
       "--theme2": activeThemeColor2,
-      backgroundColor: themeMode === "autumn" ? "#090604" : "#0b0908",
+      backgroundColor: themeMode === "autumn" ? "#080403" : "#0b0908",
       backgroundImage: themeMode === "autumn"
-        ? `linear-gradient(180deg, rgba(7,4,2,.16) 0%, rgba(7,4,2,.22) 28%, rgba(7,4,2,.50) 72%, rgba(7,4,2,.72) 100%),
-           linear-gradient(90deg, rgba(7,4,2,.26) 0%, rgba(7,4,2,.04) 24%, rgba(7,4,2,.04) 76%, rgba(7,4,2,.25) 100%),
-           url("/smenovnik-autumn-header.jpg"),
-           radial-gradient(circle at 14% 8%, rgba(255,122,0,.16), transparent 30%),
-           radial-gradient(circle at 82% 4%, rgba(255,210,31,.10), transparent 26%),
-           linear-gradient(160deg,#120904 0%,#0d0906 45%,#090604 100%)`
+        ? `radial-gradient(circle at 12% 6%, rgba(255,145,47,.12), transparent 25%),
+           radial-gradient(circle at 88% 8%, rgba(205,86,24,.10), transparent 27%),
+           radial-gradient(circle at 62% 76%, rgba(132,47,16,.10), transparent 35%),
+           radial-gradient(circle at 22% 88%, rgba(214,131,48,.05), transparent 31%),
+           linear-gradient(135deg, rgba(148,62,18,.045), transparent 40%),
+           linear-gradient(225deg, rgba(184,105,33,.035), transparent 42%),
+           linear-gradient(160deg,#0a0503 0%,#130905 24%,#1d0d06 48%,#120805 72%,#070403 100%)`
         : `radial-gradient(circle at 15% 10%, ${themeColor}18, transparent 32%), radial-gradient(circle at 85% 0%, ${themeColor2}16, transparent 30%), linear-gradient(180deg,#050711 0%,#070a12 55%,#05070d 100%)`,
-      backgroundRepeat: themeMode === "autumn" ? "no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat" : "no-repeat",
-      backgroundPosition: themeMode === "autumn" ? "center, center, center, top center, top center, top center" : "top center",
-      backgroundSize: themeMode === "autumn" ? "cover, cover, cover, cover, cover, cover" : "cover",
-      backgroundAttachment: themeMode === "autumn" ? "fixed, fixed, fixed, fixed, fixed, fixed" : "fixed",
+      backgroundRepeat: "no-repeat",
+      backgroundPosition: "center",
+      backgroundSize: "cover",
+      backgroundAttachment: "fixed",
     } as React.CSSProperties}
   >
     <style jsx global>{`
@@ -902,61 +903,36 @@ let weeksCount: number = statsWeeks === "all" ? 1 : statsWeeks;
       .theme-dot { background: var(--theme) !important; box-shadow: 0 0 16px color-mix(in srgb, var(--theme) 70%, transparent); }
       @keyframes leafFall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 0; } 15% { opacity: .9; } 100% { transform: translateY(105vh) rotate(520deg) translateX(80px); opacity: 0; } }
       @keyframes leafDrift { 0%,100% { transform: translate(0,0) rotate(-8deg); } 50% { transform: translate(18px,24px) rotate(18deg); } }
+      @keyframes ambientLeafFall {
+        0% { transform: translate3d(0,-14vh,0) rotate(0deg); opacity: 0; }
+        8% { opacity: .55; }
+        55% { transform: translate3d(42px,52vh,0) rotate(260deg); opacity: .42; }
+        100% { transform: translate3d(-26px,112vh,0) rotate(620deg); opacity: 0; }
+      }
       .leaf-fall { animation-name: leafFall; animation-timing-function: ease-in; animation-fill-mode: forwards; }
       .leaf-drift { animation: leafDrift 5s ease-in-out infinite; }
+      .ambient-leaf { animation-name: ambientLeafFall; animation-timing-function: linear; animation-iteration-count: infinite; will-change: transform, opacity; }
       .classic-theme .autumn-only { display: none !important; }
       .autumn-theme { color-scheme: dark; }
+      .autumn-theme > .autumn-decor { position: fixed !important; inset: 0 !important; z-index: 0 !important; }
       .autumn-theme::before {
         content:"";
         position:fixed;
-        inset:0 0 auto 0;
-        height:100vh;
+        inset:0;
         pointer-events:none;
         z-index:0;
         background:
-          radial-gradient(circle at 50% -10%,rgba(255,191,88,.10),transparent 42%),
-          linear-gradient(180deg,rgba(0,0,0,.02),rgba(0,0,0,.20) 58%,rgba(0,0,0,.34));
+          radial-gradient(circle at 18% -6%,rgba(255,190,102,.13),transparent 34%),
+          radial-gradient(circle at 82% 4%,rgba(255,112,28,.10),transparent 30%),
+          linear-gradient(180deg,rgba(255,173,75,.025) 0%,rgba(0,0,0,.08) 48%,rgba(0,0,0,.28) 100%);
       }
       .autumn-theme > * { position:relative; z-index:1; }
       .autumn-theme .theme-primary { background: linear-gradient(135deg,#ff6a00 0%,#ff9a00 52%,#ffd21f 100%) !important; color:#170b00 !important; box-shadow: 0 10px 32px rgba(255,111,0,.34), 0 0 42px rgba(255,202,31,.18) !important; }
       .autumn-theme .theme-soft { background: linear-gradient(135deg,rgba(255,122,0,.18),rgba(255,210,31,.08)) !important; color:#ffd56a !important; border-color:rgba(255,151,37,.42) !important; }
       .autumn-theme .theme-text { color:#ffb347 !important; }
       .autumn-theme .theme-border { border-color:rgba(255,140,30,.34) !important; }
-      .autumn-theme .app-sidebar {
-        background:linear-gradient(180deg,rgba(28,14,5,.78),rgba(12,8,5,.74)) !important;
-        border-right-color:rgba(255,143,34,.22) !important;
-        box-shadow:18px 0 70px rgba(24,10,0,.25) !important;
-        backdrop-filter:blur(28px) saturate(115%);
-        -webkit-backdrop-filter:blur(28px) saturate(115%);
-      }
-      .autumn-theme .sidebar-nav-item {
-        background:rgba(5,3,2,.16);
-        border-color:transparent;
-      }
-      .autumn-theme .sidebar-nav-item:hover {
-        background:rgba(10,6,3,.36);
-        border-color:rgba(255,154,49,.10);
-      }
-      .autumn-theme .sidebar-nav-item-active {
-        background:linear-gradient(90deg,rgba(255,126,0,.18),rgba(255,183,43,.07)) !important;
-        border-color:rgba(255,149,37,.56) !important;
-        box-shadow:inset 0 1px 0 rgba(255,214,136,.04),0 10px 28px rgba(45,18,0,.12);
-      }
-      .autumn-theme .app-card {
-        background:
-          radial-gradient(circle at 90% 0%,rgba(255,139,28,.08),transparent 36%),
-          linear-gradient(145deg,rgba(28,15,7,.84),rgba(10,8,6,.79)) !important;
-        border-color:rgba(255,139,28,.18) !important;
-        box-shadow:0 18px 55px rgba(20,8,0,.24), inset 0 1px 0 rgba(255,214,150,.035) !important;
-        backdrop-filter:blur(18px) saturate(112%);
-        -webkit-backdrop-filter:blur(18px) saturate(112%);
-      }
-      .autumn-theme .overview-person-card {
-        background:linear-gradient(145deg,rgba(28,16,8,.84),rgba(10,8,6,.80)) !important;
-        box-shadow:0 18px 46px rgba(24,9,0,.20);
-        backdrop-filter:blur(16px) saturate(112%);
-        -webkit-backdrop-filter:blur(16px) saturate(112%);
-      }
+      .autumn-theme .app-sidebar { background: linear-gradient(180deg,rgba(35,17,5,.97),rgba(14,9,5,.98)) !important; border-right-color:rgba(255,132,20,.22) !important; box-shadow: 18px 0 60px rgba(72,27,0,.22) !important; }
+      .autumn-theme .app-card { background: radial-gradient(circle at 90% 0%,rgba(255,139,28,.08),transparent 36%), linear-gradient(145deg,rgba(30,17,8,.97),rgba(12,10,7,.96)) !important; border-color:rgba(255,139,28,.16) !important; box-shadow: 0 18px 55px rgba(34,13,0,.25), inset 0 1px 0 rgba(255,200,100,.025) !important; }
       .autumn-theme .app-modal { background: radial-gradient(circle at 90% 0%,rgba(255,151,35,.12),transparent 30%), linear-gradient(145deg,#211207,#0e0b08) !important; border-color:rgba(255,146,35,.22) !important; }
       .autumn-theme input, .autumn-theme textarea { caret-color:#ff9a00; }
       .autumn-theme input:focus, .autumn-theme textarea:focus { border-color:rgba(255,157,48,.55) !important; box-shadow:0 0 0 3px rgba(255,122,0,.08) !important; }
@@ -1036,7 +1012,7 @@ function Sidebar({ activePage, setActivePage, currentPerson, onLogout }: { activ
     {page:"updates",icon:"update",label:"Aktualizace"},
     {page:"settings",icon:"settings",label:"Nastavení"},
   ];
-  return <><aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-[252px] border-r border-white/[0.07] bg-[#0e0b08]/90 px-5 py-6 shadow-[20px_0_60px_rgba(0,0,0,.18)] backdrop-blur-2xl lg:flex lg:flex-col"><div className="mb-9 flex items-center gap-3 px-2"><div className="flex h-11 w-11 items-center justify-center rounded-2xl border theme-soft theme-ring"><Icon name="calendar" size={24}/></div><div><div className="text-[15px] font-black tracking-tight">Směnovník <span className="text-[10px] theme-text">v{APP_VERSION}</span></div><div className="text-[11px] text-slate-500">směny, škola & společný čas</div></div></div><nav className="space-y-1.5">{items.map(i=><button key={i.page} onClick={()=>setActivePage(i.page)} className={`sidebar-nav-item flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition ${activePage===i.page?"sidebar-nav-item-active theme-text":"text-slate-400 hover:text-white"}`}><Icon name={i.icon} size={19}/>{i.label}{i.page==="updates"&&<span className="ml-auto rounded-full bg-orange-400/15 px-2 py-0.5 text-[9px] font-bold text-orange-300">2.1</span>}</button>)}</nav><div className="mt-auto">{currentPerson&&<div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3"><Avatar person={currentPerson} size={38}/><div><div className="text-sm font-semibold">{currentPerson.name}</div><div className="flex items-center gap-1.5 text-[11px] text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/>Přihlášen</div></div></div></div>}<button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"><Icon name="logout" size={19}/>Odhlásit se</button></div></aside><div className="app-sidebar fixed left-0 right-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#0e0b08]/90 px-4 backdrop-blur-2xl lg:hidden"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border theme-soft"><Icon name="calendar" size={20}/></div><span className="font-black">Směnovník</span></div><button onClick={onLogout} className="rounded-xl p-2 text-slate-400 hover:text-red-400"><Icon name="logout"/></button></div><nav className="app-sidebar fixed bottom-0 left-0 right-0 z-40 grid grid-cols-6 border-t border-white/[0.07] bg-[#0e0b08]/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl lg:hidden">{items.map(i=><button key={`mobile-${i.page}`} onClick={()=>setActivePage(i.page)} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[8px] font-semibold transition ${activePage===i.page?"theme-soft":"text-slate-500"}`}><Icon name={i.icon} size={17}/><span className="max-w-full truncate">{i.label}</span></button>)}</nav></>;
+  return <><aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-[252px] border-r border-white/[0.07] bg-[#0e0b08]/90 px-5 py-6 shadow-[20px_0_60px_rgba(0,0,0,.18)] backdrop-blur-2xl lg:flex lg:flex-col"><div className="mb-9 flex items-center gap-3 px-2"><div className="flex h-11 w-11 items-center justify-center rounded-2xl border theme-soft theme-ring"><Icon name="calendar" size={24}/></div><div><div className="text-[15px] font-black tracking-tight">Směnovník <span className="text-[10px] theme-text">v{APP_VERSION}</span></div><div className="text-[11px] text-slate-500">směny, škola & společný čas</div></div></div><nav className="space-y-1.5">{items.map(i=><button key={i.page} onClick={()=>setActivePage(i.page)} className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm transition ${activePage===i.page?"border theme-soft":"border border-transparent text-slate-500 hover:bg-white/[0.03] hover:text-white"}`}><Icon name={i.icon} size={19}/>{i.label}{i.page==="updates"&&<span className="ml-auto rounded-full bg-orange-400/15 px-2 py-0.5 text-[9px] font-bold text-orange-300">2.1</span>}</button>)}</nav><div className="mt-auto">{currentPerson&&<div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3"><Avatar person={currentPerson} size={38}/><div><div className="text-sm font-semibold">{currentPerson.name}</div><div className="flex items-center gap-1.5 text-[11px] text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/>Přihlášen</div></div></div></div>}<button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"><Icon name="logout" size={19}/>Odhlásit se</button></div></aside><div className="app-sidebar fixed left-0 right-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#0e0b08]/90 px-4 backdrop-blur-2xl lg:hidden"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border theme-soft"><Icon name="calendar" size={20}/></div><span className="font-black">Směnovník</span></div><button onClick={onLogout} className="rounded-xl p-2 text-slate-400 hover:text-red-400"><Icon name="logout"/></button></div><nav className="app-sidebar fixed bottom-0 left-0 right-0 z-40 grid grid-cols-6 border-t border-white/[0.07] bg-[#0e0b08]/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl lg:hidden">{items.map(i=><button key={`mobile-${i.page}`} onClick={()=>setActivePage(i.page)} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[8px] font-semibold transition ${activePage===i.page?"theme-soft":"text-slate-500"}`}><Icon name={i.icon} size={17}/><span className="max-w-full truncate">{i.label}</span></button>)}</nav></>;
 }
 
 function PageHeader({ eyebrow,title,description,action }: { eyebrow:string;title:string;description:string;action?:ReactNode }) { return <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><div className="mb-2 inline-flex rounded-full border theme-soft px-2.5 py-1 text-[9px] font-bold tracking-[.22em]">{eyebrow}</div><h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">{title}</h1><p className="mt-2 text-sm text-slate-400">{description}</p></div>{action}</div>; }
@@ -1123,7 +1099,7 @@ function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift
   const todayShiftCount=shifts.filter(s=>s.type==="vacation"?today>=s.date&&today<=(s.endDate||s.date):s.date===today).length;
   const todayEventCount=events.filter(e=>e.date===today).length;
   return <div><PageHeader eyebrow="SMĚNOVNÍK" title="Přehled" description="Všechno důležité na jednom místě." action={<div className="w-full rounded-2xl border border-orange-400/20 bg-black/20 px-5 py-3.5 backdrop-blur-md sm:w-auto sm:min-w-[340px] xl:min-w-[390px]"><div className="text-[9px] font-bold uppercase tracking-[.18em] text-orange-300/70">Dnešní povzbuzení</div><div className="mt-1.5 text-sm font-semibold text-slate-200">{dailyBoost(currentPerson)}</div></div>}/><AutumnSectionTitle text="Podzimní přehled"/>
-    <section className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{people.map(p=>{const todayShifts=shifts.filter(x=>x.userId===p.id&&(x.type==="vacation"?today>=x.date&&today<=(x.endDate||x.date):x.date===today)).sort((a,b)=>a.startTime.localeCompare(b.startTime));return <div key={p.id} className="overview-person-card group relative overflow-hidden rounded-3xl border p-5 transition hover:-translate-y-1" style={{borderColor:`${p.color}38`}}><div className="autumn-only pointer-events-none absolute right-3 top-2 text-2xl opacity-20">🍂</div><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div className="min-w-0 flex-1"><div className="text-[15px] font-black">{p.name}</div></div></div><div className="relative mt-5 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{todayShifts.length>0?<div className="space-y-2">{todayShifts.map(s=><div key={s.id} className="rounded-xl border px-3 py-2" style={{borderColor:`${shiftInfo[s.type].color}38`,background:`${shiftInfo[s.type].color}0d`}}><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-base font-black">{s.startTime} – {s.endTime}</div></div>)}</div>:<><div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div><div className="mt-1 text-xs text-slate-600">Volno</div></>}</div></div>})}</section>
+    <section className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{people.map(p=>{const todayShifts=shifts.filter(x=>x.userId===p.id&&(x.type==="vacation"?today>=x.date&&today<=(x.endDate||x.date):x.date===today)).sort((a,b)=>a.startTime.localeCompare(b.startTime));return <div key={p.id} className="group relative overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(31,24,19,.96),rgba(14,12,10,.94))] p-5 transition hover:-translate-y-1" style={{borderColor:`${p.color}38`}}><div className="autumn-only pointer-events-none absolute right-3 top-2 text-2xl opacity-20">🍂</div><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div className="min-w-0 flex-1"><div className="text-[15px] font-black">{p.name}</div></div></div><div className="relative mt-5 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{todayShifts.length>0?<div className="space-y-2">{todayShifts.map(s=><div key={s.id} className="rounded-xl border px-3 py-2" style={{borderColor:`${shiftInfo[s.type].color}38`,background:`${shiftInfo[s.type].color}0d`}}><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-base font-black">{s.startTime} – {s.endTime}</div></div>)}</div>:<><div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div><div className="mt-1 text-xs text-slate-600">Volno</div></>}</div></div>})}</section>
     <section className="mb-8 grid gap-5 xl:grid-cols-[1.75fr_.95fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-500">Seřazené podle toho, komu začíná směna nejdřív</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcoming.map(s=>{const p=people.find(x=>x.id===s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="text-xs text-slate-500">{formatDate(s.date)}</div><div className="mt-1 text-[10px] font-bold theme-text">{shiftCountdown(s,clock)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-500">{s.startTime} – {s.endTime}</div></div></div>})}</div></Card><Card className="relative overflow-hidden p-6"><div className="pointer-events-none absolute -right-3 -top-4 text-6xl opacity-10">🍁</div><h2 className="font-bold">Informace</h2><p className="mt-1 text-xs text-slate-500">Dnešní rychlý přehled</p><div className="relative mx-auto mt-6 grid max-w-[390px] grid-cols-2 gap-3"><InfoBubble label="Směn celkem" value={String(shifts.length)} icon="calendar"/><InfoBubble label="Směn dnes" value={String(todayShiftCount)} icon="clock"/><div className="col-span-2 mx-auto -my-1 flex h-28 w-28 flex-col items-center justify-center rounded-full border border-orange-300/25 bg-orange-500/10 text-center shadow-[0_0_45px_rgba(249,115,22,.12)]"><div className="text-2xl">🍂</div><div className="mt-1 text-sm font-black capitalize text-orange-200">{monthLabel}</div><div className="text-[10px] text-orange-300/60">měsíc</div></div><InfoBubble label="Událostí dnes" value={String(todayEventCount)} icon="event"/><InfoBubble label="Dnešní svátek" value={nameDay||"Načítám…"} icon="users" small/></div></Card></section>
     <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy na jednom místě.</p></div><div className="grid gap-6"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden</SmallToggle></div>}/><div><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="text-xl opacity-70">🍂</span><div><h3 className="font-bold text-[#f1e7dc]">Davčův rozvrh</h3><p className="text-xs text-[#9f8d7e]">Sudý = škola, lichý = praxe</p></div></div><div className="flex gap-2"><SmallToggle active={davidWeek==="odd"} onClick={()=>setDavidWeek("odd")}>Lichý týden</SmallToggle><SmallToggle active={davidWeek==="even"} onClick={()=>setDavidWeek("even")}>Sudý týden</SmallToggle></div></div>{davidWeek==="even"?<SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool}/>:<DavidPracticeSchedule practice={practice} canEdit={currentPerson?.email==="dkudlata9@gmail.com"} onAdd={openPractice} onDelete={deletePractice}/>}</div></div></section>
   </div>;
@@ -1529,7 +1505,30 @@ function UpdateIntroModal({onDone}:{onDone:()=>void}){return <Modal onClose={()=
 
 function ShiftSavedToast({animations}:{animations:boolean}){return <div className="pointer-events-none fixed inset-0 z-[140] flex items-start justify-center pt-24">{animations&&<div className="absolute inset-0 overflow-hidden">{Array.from({length:16},(_,i)=><span key={i} className="leaf-fall absolute -top-10 text-2xl" style={{left:`${(i*7)%100}%`,animationDelay:`${(i%6)*.12}s`,animationDuration:`${1.6+(i%4)*.25}s`}}>{i%2?"🍂":"🍁"}</span>)}</div>}<div className="relative rounded-2xl border border-emerald-300/20 bg-[#0b1510]/95 px-5 py-3 shadow-2xl backdrop-blur-xl"><div className="flex items-center gap-3 text-sm font-bold text-emerald-200"><Icon name="check" size={18}/>Směna byla úspěšně uložena</div></div></div>}
 
-function AutumnDecor({animations}:{animations:boolean}){return <div className="autumn-only pointer-events-none fixed inset-0 z-0 overflow-hidden"><div className="absolute -left-24 -top-24 h-[420px] w-[420px] rounded-full bg-orange-500/[0.10] blur-[120px]"/><div className="absolute -right-20 top-[12%] h-[360px] w-[360px] rounded-full bg-amber-300/[0.07] blur-[120px]"/><div className="absolute bottom-[-120px] left-[38%] h-[360px] w-[520px] rounded-full bg-orange-700/[0.08] blur-[130px]"/><div className="absolute right-[4%] top-[9%] text-7xl opacity-[0.10] autumn-leaf-accent">🍁</div><div className="absolute left-[14%] top-[43%] text-6xl opacity-[0.07] autumn-leaf-accent">🍂</div><div className="absolute right-[18%] bottom-[12%] text-5xl opacity-[0.06]">🍁</div>{animations&&<><span className="leaf-drift absolute left-[8%] top-[15%] text-3xl opacity-25">🍂</span><span className="leaf-drift absolute right-[12%] top-[30%] text-3xl opacity-20 [animation-delay:1.4s]">🍁</span><span className="leaf-drift absolute left-[52%] top-[8%] text-2xl opacity-15 [animation-delay:2.2s]">🍂</span></>}</div>}
+function AutumnDecor({animations}:{animations:boolean}){
+  const fallingLeaves = [
+    {left:"4%",delay:"-2s",duration:"15s",size:"text-2xl",leaf:"🍂"},
+    {left:"12%",delay:"-9s",duration:"19s",size:"text-3xl",leaf:"🍁"},
+    {left:"23%",delay:"-5s",duration:"17s",size:"text-xl",leaf:"🍂"},
+    {left:"34%",delay:"-13s",duration:"21s",size:"text-2xl",leaf:"🍁"},
+    {left:"47%",delay:"-7s",duration:"18s",size:"text-3xl",leaf:"🍂"},
+    {left:"58%",delay:"-16s",duration:"22s",size:"text-xl",leaf:"🍁"},
+    {left:"69%",delay:"-4s",duration:"16s",size:"text-2xl",leaf:"🍂"},
+    {left:"79%",delay:"-11s",duration:"20s",size:"text-3xl",leaf:"🍁"},
+    {left:"89%",delay:"-6s",duration:"18.5s",size:"text-xl",leaf:"🍂"},
+    {left:"96%",delay:"-14s",duration:"23s",size:"text-2xl",leaf:"🍁"},
+  ];
+  return <div className="autumn-decor autumn-only pointer-events-none fixed inset-0 overflow-hidden">
+    <div className="absolute -left-24 -top-24 h-[420px] w-[420px] rounded-full bg-orange-700/[0.055] blur-[130px]"/>
+    <div className="absolute -right-20 top-[12%] h-[360px] w-[360px] rounded-full bg-amber-700/[0.035] blur-[130px]"/>
+    <div className="absolute bottom-[-120px] left-[38%] h-[360px] w-[520px] rounded-full bg-orange-950/[0.12] blur-[140px]"/>
+    <div className="absolute right-[4%] top-[9%] text-7xl opacity-[0.16] autumn-leaf-accent">🍁</div>
+    <div className="absolute left-[14%] top-[43%] text-6xl opacity-[0.12] autumn-leaf-accent">🍂</div>
+    <div className="absolute right-[18%] bottom-[12%] text-5xl opacity-[0.10]">🍁</div>
+    <div className="absolute left-[39%] bottom-[8%] text-4xl opacity-[0.08]">🍂</div>
+    {animations && fallingLeaves.map((item,index)=><span key={index} className={`ambient-leaf absolute -top-16 ${item.size} opacity-0`} style={{left:item.left,animationDelay:item.delay,animationDuration:item.duration}}>{item.leaf}</span>)}
+  </div>;
+}
 
 function EventDetailModal({event,people,onClose}:{event:EventItem;people:Person[];onClose:()=>void}){return <Modal onClose={onClose}><div className="flex items-start justify-between gap-4"><div><div className="text-xs font-bold text-orange-300">{formatDate(event.date)} · {event.time}</div><h2 className="mt-2 text-2xl font-black">{event.title}</h2></div><span className="text-3xl">🍁</span></div><div className="mt-6 grid gap-3 sm:grid-cols-2"><DetailBox label="Místo" value={event.place||"Bez místa"}/><DetailBox label="Čas" value={event.time||"Bez času"}/></div><div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 p-4"><div className="text-[10px] font-bold uppercase tracking-[.15em] text-slate-600">Poznámka / popis</div><div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{event.description||"Bez poznámky"}</div></div><div className="mt-5"><div className="text-xs font-bold text-slate-400">Účastníci</div><div className="mt-3 flex flex-wrap gap-2">{event.participants.length?event.participants.map(id=>{const p=people.find(x=>x.id===id);return p?<div key={id} className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs"><Avatar person={p} size={24}/>{p.name}</div>:null}):<span className="text-xs text-slate-600">Nikdo vybraný</span>}</div></div><button type="button" onClick={onClose} className="mt-6 w-full rounded-xl border border-white/[0.08] py-3 text-xs font-bold text-slate-300">Zavřít</button></Modal>}
 function DetailBox({label,value}:{label:string;value:string}){return <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-4"><div className="text-[10px] font-bold uppercase tracking-[.15em] text-slate-600">{label}</div><div className="mt-2 text-sm font-semibold text-slate-200">{value}</div></div>}
