@@ -324,26 +324,36 @@ function openPrintWindow(title: string, body: string, landscape = false) {
 <meta charset="utf-8"/>
 <title>${escapePrintHtml(title)}</title>
 <style>
-  @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 12mm; }
+  @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 11mm 10mm 13mm; }
   * { box-sizing: border-box; }
-  body { margin: 0; color: #1f2937; font-family: Arial, Helvetica, sans-serif; font-size: 12px; background: white; }
-  h1 { margin: 0 0 4px; font-size: 24px; }
-  h2 { margin: 22px 0 8px; font-size: 16px; }
-  .muted { color: #6b7280; }
-  .header { border-bottom: 3px solid #f97316; padding-bottom: 10px; margin-bottom: 16px; }
-  .summary { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin: 12px 0 18px; }
-  .box { border: 1px solid #e5e7eb; border-radius: 9px; padding: 9px; }
-  .box strong { display: block; margin-top: 4px; font-size: 16px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { border: 1px solid #d1d5db; padding: 7px 8px; vertical-align: top; text-align: left; }
-  th { background: #f3f4f6; font-size: 11px; }
-  tr { break-inside: avoid; }
-  .badge { display: inline-block; border-radius: 999px; background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; padding: 2px 7px; font-size: 10px; font-weight: 700; }
-  .bar-row { display: grid; grid-template-columns: 120px 1fr 70px; align-items: center; gap: 8px; margin: 7px 0; }
-  .bar-track { height: 10px; border-radius: 999px; background: #e5e7eb; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg,#f97316,#facc15); }
-  .foot { margin-top: 18px; font-size: 10px; color: #9ca3af; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; color: #17212b; font-family: Arial, Helvetica, sans-serif; font-size: 10px; line-height: 1.4; background: #fff; }
+  h1 { margin: 0 0 5px; font-size: 25px; letter-spacing: -.55px; font-weight: 800; }
+  h2 { margin: 20px 0 8px; font-size: 14px; letter-spacing: -.2px; }
+  .muted { color: #64748b; }
+  .header { position: relative; border-bottom: 3px solid #e87524; padding: 0 0 12px 13px; margin-bottom: 14px; }
+  .header:before { content: ""; position: absolute; left: 0; top: 2px; bottom: 12px; width: 4px; border-radius: 4px; background: #e87524; }
+  .header .eyebrow { margin-bottom: 5px; color: #b45309; font-size: 8px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; }
+  .header .doc-meta { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: #64748b; font-size: 9px; }
+  .summary { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 7px; margin: 12px 0 17px; }
+  .box { border: 1px solid #dbe2e8; border-radius: 7px; padding: 9px 10px; background: #fff; color: #64748b; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .45px; }
+  .box strong { display: block; margin-top: 5px; color: #17212b; font-size: 16px; line-height: 1.2; letter-spacing: -.3px; text-transform: none; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; table-layout: auto; }
+  thead { display: table-header-group; }
+  th, td { border-bottom: 1px solid #dbe2e8; padding: 7px 7px; vertical-align: top; text-align: left; }
+  th { border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; background: #eef2f6; color: #334155; font-size: 8px; font-weight: 800; letter-spacing: .55px; text-transform: uppercase; }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  td { overflow-wrap: anywhere; }
+  td:nth-child(1), td:nth-child(2), td:nth-child(4), td:nth-child(5) { white-space: nowrap; }
+  td:last-child { min-width: 100px; }
+  .badge { display: inline-block; border-radius: 4px; background: #fff4e8; border: 1px solid #f3c18f; color: #9a4b12; padding: 3px 6px; font-size: 8px; font-weight: 800; white-space: nowrap; }
+  .bar-row { display: grid; grid-template-columns: 120px 1fr 80px; align-items: center; gap: 8px; margin: 7px 0; }
+  .bar-track { height: 8px; border-radius: 99px; background: #e8edf2; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 99px; background: #e87524; }
+  .foot { margin-top: 16px; padding-top: 8px; border-top: 1px solid #dbe2e8; font-size: 8px; color: #64748b; }
   @media print { .no-print { display:none !important; } }
+  @media screen { body { padding: 24px; max-width: 1400px; margin: 0 auto; } }
 </style>
 </head>
 <body>${body}<script>window.onload=()=>{setTimeout(()=>window.print(),150)}<\/script></body>
@@ -1371,6 +1381,7 @@ function birthdayAgeOnDate(birthday:string | null | undefined, date:string){
   return targetYear-birthYear;
 }
 
+
 function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerson,month,year,changeMonth,filter,setFilter,openAddShift,openEditShift,saveShiftRating,loading,autumn,goToToday}:{people:Person[];shifts:Shift[];currentPerson:Person|null;selectedPerson:Person|null;setSelectedPerson:(p:Person|null)=>void;month:number;year:number;changeMonth:(d:number)=>void;filter:ShiftType|"all";setFilter:(f:ShiftType|"all")=>void;openAddShift:(d?:string)=>void;openEditShift:(s:Shift)=>void;saveShiftRating:(shift:Shift,rating:number,reason:string,tramNumber:string,tramRating:TramRating|null)=>Promise<boolean>;loading:boolean;autumn:boolean;goToToday:()=>void;}){
   const [detailShift,setDetailShift]=useState<Shift|null>(null);
   const [dayDetail,setDayDetail]=useState<string|null>(null);
@@ -1458,10 +1469,10 @@ function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerso
     const filterLabel = filter === "all" ? "Všechny typy" : shiftInfo[filter].label;
     openPrintWindow(
       `Směnovník – ${monthName(year,month)} ${year}`,
-      `<div class="header"><h1>Směnovník – rozpis směn</h1><div class="muted">${escapePrintHtml(monthName(year,month))} ${year} · ${escapePrintHtml(selectedLabel)} · ${escapePrintHtml(filterLabel)}</div></div>
-       <div class="summary"><div class="box">Směn<strong>${printable.length}</strong></div><div class="box">Odpracováno<strong>${escapePrintHtml(formatWorkedMinutes(totalMinutes))}</strong></div><div class="box">Osoby<strong>${visible.length}</strong></div><div class="box">Pauza<strong>Tibík, Kuba, Lucka −30 min / směna</strong></div></div>
-       <table><thead><tr><th>Datum</th><th>Osoba</th><th>Typ směny</th><th>Čas</th><th>Odpracováno</th><th>Poznámka</th></tr></thead><tbody>${rows || `<tr><td colspan="6">Pro zvolený měsíc nejsou žádné směny.</td></tr>`}</tbody></table>
-       <div class="foot">Vygenerováno ze Směnovníku. Dovolená a nemoc nejsou započítané do odpracovaného času.</div>`
+      `<div class="header"><div class="eyebrow">Směnovník · Provozní dokument</div><h1>Měsíční přehled směn</h1><div class="doc-meta"><span>Období: <strong>${escapePrintHtml(monthName(year,month))} ${year}</strong></span><span>Osoba: <strong>${escapePrintHtml(selectedLabel)}</strong></span><span>Filtr: <strong>${escapePrintHtml(filterLabel)}</strong></span><span>Vygenerováno: <strong>${new Date().toLocaleDateString("cs-CZ")}</strong></span></div></div>
+       <div class="summary"><div class="box">Celkem směn<strong>${printable.length}</strong></div><div class="box">Odpracovaný čas<strong>${escapePrintHtml(formatWorkedMinutes(totalMinutes))}</strong></div><div class="box">Počet osob<strong>${visible.length}</strong></div><div class="box">Přestávky<strong>−30 min u vybraných osob</strong></div></div>
+       <table><thead><tr><th>Datum</th><th>Osoba</th><th>Typ směny</th><th>Čas</th><th>Odpracováno</th><th>Poznámka / místo výkonu</th></tr></thead><tbody>${rows || `<tr><td colspan="6">Pro zvolené období nejsou evidovány žádné směny.</td></tr>`}</tbody></table>
+       <div class="foot"><strong>SMĚNOVNÍK</strong> · Interní provozní přehled · Odpracovaný čas je uveden po odečtení příslušných přestávek. Dovolená a nemoc se do odpracovaného času nezapočítávají.</div>`
     );
   };
   const now=new Date();
