@@ -7,6 +7,7 @@ type ShiftType = "morning" | "afternoon" | "intershift" | "night" | "midnight" |
 type TramRating = "mrdka" | "usla" | "topka";
 type Page = "overview" | "shifts" | "events" | "stats" | "updates" | "settings";
 type AuthSession = { user?: { email?: string | null } } | null;
+type EventCategory = "sport" | "trip" | "party" | "food" | "family" | "school" | "other";
 
 type Person = {
   id: string;
@@ -43,6 +44,7 @@ type EventItem = {
   description: string;
   participants: string[];
   createdBy?: string;
+  category?: EventCategory;
 };
 
 type PracticeItem = {
@@ -64,6 +66,15 @@ const APP_VERSION = "2.1";
 const DAVID_AUTH_ID = "0989a80c-eaec-425b-a9e9-6ff0173c678d";
 const TRAM_REVIEW_EMAILS = new Set(["matejuher15@gmail.com"]);
 const TRAM_RATING_LABELS:Record<TramRating,string>={mrdka:"Mrdka",usla:"Ušla",topka:"Topka"};
+const EVENT_CATEGORIES: Record<EventCategory, { label: string; emoji: string; color: string }> = {
+  sport:  { label: "Sport",  emoji: "🏃", color: "#4ade80" },
+  trip:   { label: "Výlet",  emoji: "🥾", color: "#38bdf8" },
+  party:  { label: "Párty",  emoji: "🎉", color: "#f472b6" },
+  food:   { label: "Jídlo",  emoji: "🍽️", color: "#fbbf24" },
+  family: { label: "Rodina", emoji: "🕯️", color: "#fb923c" },
+  school: { label: "Škola",  emoji: "📚", color: "#a78bfa" },
+  other:  { label: "Jiné",   emoji: "📌", color: "#a8a29e" },
+};
 const UPDATE_ITEMS_20 = [
   "Nový podzimní vzhled Směnovníku s možností vrátit klasický motiv.",
   "Přidaná stránka Aktualizace a jednorázové okno s novinkami verze 2.0.",
@@ -602,6 +613,7 @@ export default function Home() {
           event_time,
           location,
           description,
+          category,
           event_participants (
             user_id
           )
@@ -621,6 +633,7 @@ export default function Home() {
         place: e.location || "",
         description: e.description || "",
         createdBy: e.created_by,
+        category: (e.category as EventCategory) || "other",
         participants: (e.event_participants ?? [])
           .map(participant => people.find(person => person.authId === participant.user_id)?.id)
           .filter((id): id is string => Boolean(id)),
@@ -835,8 +848,9 @@ export default function Home() {
         event_time: item.time,
         location: item.place || null,
         description: item.description || null,
+        category: item.category ?? "other",
       })
-      .select("id,created_by,title,event_date,event_time,location,description")
+      .select("id,created_by,title,event_date,event_time,location,description,category")
       .single();
 
     if (error) {
@@ -873,6 +887,7 @@ export default function Home() {
       description: data.description || "",
       participants: item.participants,
       createdBy: data.created_by,
+      category: (data.category as EventCategory) || "other",
     };
 
     setEvents(prev => [...prev, saved].sort((a, b) => a.date.localeCompare(b.date)));
@@ -1121,61 +1136,61 @@ function Card({children,className=""}:{children:ReactNode;className?:string}){re
 function dailyBoost(person: Person | null) {
   const quotesByPerson: Record<string, string[]> = {
     "Tibík": [
-      "Pokud ještě nemůžeš dělat velké věci, dělej malé věci velkým způsobem.",
-      "Za rok si přeješ, abys začal dnes.",
-      "Vzdělání je nejmocnější zbraň, kterou můžeš použít k tomu, abys změnil svět.",
-      "Dělej to nejlepší, co můžeš. Nikdo nemůže udělat víc než to.",
-      "Žij ze své představivosti, ne ze své historie.",
-      "Příležitosti se nestávají, ty je vytváříš.",
-      "Stanovení cílů je prvním krokem k tomu, aby se neviditelné stalo viditelným.",
-      "Nikdy se nevzdávej snu jen proto, že čas, který bude trvat, je dlouhý. Čas stejně uplyne.",
+      "Každá směna, kterou odvedeš dobře, je cihla do toho, co si právě stavíš.",
+      "Nemusíš být dnes dokonalý, stačí být lepší než včera.",
+      "Malé kroky každý den jsou tišší než velké skoky, ale dojdou dál.",
+      "Disciplína je láska k tomu, kým chceš být.",
+      "Když se ti nechce, je to nejlepší chvíle dokázat si, že to zvládneš.",
+      "Učení je práce, ze které nejde vzít dovolenou, ale vyplatí se nejvíc.",
+      "Klid a pravidelnost porazí nadšení na jeden den.",
+      "Dnešek je jediný čas, který opravdu můžeš ovlivnit, tak ho nepromarni.",
     ],
     "Davča": [
-      "Buď ty, kdo řídí den, nebo den řídí tebe.",
-      "Soustřeď všechny své myšlenky na práci, kterou máš před sebou.",
-      "Usilovnost poráží talent, když talent nepracuje.",
-      "Úspěšný muž se poučí ze svých chyb a zkusí to znovu jiným způsobem.",
-      "Když se snažíme stát se lepšími, vše kolem nás se také zlepšuje.",
-      "Začni tam, kde jsi. Použij, co máš. Dělej, co můžeš.",
-      "Pracuj, dokud tvůj bankovní účet nevypadá jako telefonní číslo.",
-      "Každé ráno se musíš probudit s odhodláním, pokud chceš jít spát s uspokojením.",
+      "Dobrý řemeslník se pozná podle detailů, kterých si nikdo nevšimne.",
+      "Každá hodina ve škole i na praxi je investice, která se ti jednou vrátí.",
+      "Zkušenosti se nekupují, sbírají se den po dni.",
+      "Chyba není konec světa, je to lekce, za kterou jsi nemusel platit.",
+      "Slušné chování a úsměv otevřou víc dveří než jakýkoli diplom.",
+      "Kdo to s prací myslí vážně, nehledá zkratky, ale lepší způsoby.",
+      "Trpělivost si trénuješ pokaždé, když to chceš vzdát a neuděláš to.",
+      "Být spolehlivý je dnes vzácnější než být talentovaný.",
     ],
     "Matýsek": [
-      "Pokud to můžeš snít, můžeš to udělat.",
-      "Nedívej se na své nohy, abys zjistil, zda to děláš správně. Jen tancuj.",
-      "Někde čeká něco neuvěřitelného, co má být známo.",
-      "Nikdy se nebudeš nudit, když zkusíš něco nového.",
-      "Získej dobrý nápad a drž se ho. Pracuj na něm, dokud to nebude správně.",
-      "Jediný způsob, jak objevit hranice možného, je vyrazit trochu dál do nemožného.",
-      "Abychom byli nenahraditelní, musíme být vždy jiní.",
-      "Někteří lidé chtějí, aby se to stalo, někteří si přejí, aby se to stalo, jiní to dělají.",
+      "Odvaha neznamená nebát se, ale udělat to i se strachem.",
+      "Nejlepší plán je ten, který začneš dělat ještě dnes.",
+      "Zvědavost tě dovede tam, kam tě rozum sám nepustí.",
+      "Že ti něco nejde, ještě neznamená, že to nejde. Jen na to máš zatím málo pokusů.",
+      "Za každou dobrou věcí stojí spousta nudných opakování.",
+      "Kdo zkouší nové věci, ten se nikdy nepřestane posouvat.",
+      "Klid v hlavě je lepší než jakýkoli spěch.",
+      "Cestu si neuděláš čekáním, ale tím, že půjdeš.",
     ],
     "Kuba": [
-      "Kdo ovládá sám sebe, je nejsilnějším bojovníkem.",
-      "Muž, který udělal chybu a neopraví ji, dělá další chybu.",
-      "Drž oči na hvězdách a nohy na zemi.",
-      "Dělej, co můžeš, s tím, co máš, kde jsi.",
-      "Úspěch je klopýtání od selhání k selhání bez ztráty nadšení.",
-      "Pokud opravdu chceš něco udělat, najdeš způsob. Pokud ne, najdeš výmluvu.",
-      "Odvaha je jako sval. Posilujeme ji používáním.",
-      "Jeden muž s odvahou tvoří většinu.",
+      "Síla není v tom, že nikdy nespadneš, ale že vždycky vstaneš.",
+      "Sebekázeň je tichá síla, kterou nikdo nevidí, ale všichni ji poznají na výsledku.",
+      "Slib daný sám sobě je ten nejtěžší, a proto nejcennější.",
+      "Cíl, který si nenapíšeš, zůstane jen přáním.",
+      "Udělej věc pořádně hned napoprvé a ušetříš si půlku práce.",
+      "Pevný základ se nestaví rychle, ale vydrží nejdéle.",
+      "Nehledej výmluvy, hledej první krok.",
+      "Přemýšlej hlavou, jednej srdcem a většina dnů dopadne dobře.",
     ],
     "Cukr mamča": [
-      "Nejsilnějším činem ženy je milovat sebe, být sama sebou a zářit mezi těmi, kteří nikdy nevěřili, že to dokáže.",
-      "Když se žena stane svou nejlepší přítelkyní, život je jednodušší.",
-      "Rozhodla jsem se udělat zbytek svého života tím nejlepším obdobím mého života.",
-      "Nenech, aby názor někoho jiného na tebe stal se tvou realitou.",
-      "Když dáváš radost jiným lidem, dostáváš více radosti zpět.",
-      "Optimismus je víra, která vede k dosažení. Nic se nedá udělat bez naděje a důvěry.",
-      "Neseš pas k vlastnímu štěstí.",
-      "Pokud ti nedají místo u stolu, přines si skládací židli.",
+      "Starat se o ostatní je krásné, ale nezapomeň se občas postarat i o sebe.",
+      "Dobrá nálada je zadarmo a nejlíp se rozdává tím, že ji máš sama.",
+      "Nemusíš zvládnout všechno najednou, stačí zvládnout dnešek.",
+      "Úsměv je nejlevnější způsob, jak zlepšit někomu den, včetně toho svého.",
+      "Jsi silnější, než si myslíš, a dokazuješ to každý den.",
+      "Když je den těžký, připomeň si, kolik těžkých dní už jsi zvládla.",
+      "Malé radosti, jako dobrá káva nebo klidná chvíle, dělají z obyčejného dne ten hezký.",
+      "Věř si, protože nikdo tě nezná líp než ty sama.",
     ],
   };
 
   const fallback = [
-    "Začni tam, kde jsi. Použij, co máš. Dělej, co můžeš.",
-    "Pokud to můžeš snít, můžeš to udělat.",
-    "Jedna malá pozitivní myšlenka ráno může změnit celý tvůj den.",
+    "Začni tam, kde jsi, s tím, co máš, a udělej, co zvládneš.",
+    "Jedna malá dobrá věc udělaná dnes je víc než velký plán na někdy.",
+    "Každý den je nová příležitost udělat něco lépe než včera.",
   ];
 
   const personName = person?.name || "";
@@ -1656,9 +1671,137 @@ function FilterButton({active,onClick,label,color,icon}:{active:boolean;onClick:
   </button>
 }
 
+function EventHero({event:e,people,today,onOpen}:{event:EventItem;people:Person[];today:string;onOpen:()=>void}){
+  const cat=EVENT_CATEGORIES[e.category??"other"];
+  const d=new Date(`${e.date}T12:00:00`);
+  return <div onClick={onOpen} className="app-card group relative mb-8 cursor-pointer overflow-hidden rounded-3xl border p-6 transition hover:-translate-y-0.5 sm:p-7" style={{borderColor:`${cat.color}40`,background:`radial-gradient(circle at 90% 0%,${cat.color}26,transparent 45%),linear-gradient(145deg,rgba(31,24,19,.97),rgba(14,12,10,.96))`}}>
+    <div className="pointer-events-none absolute -right-3 -top-5 text-[120px] opacity-[0.07]">{cat.emoji}</div>
+    <div className="relative text-[10px] font-black uppercase tracking-[.2em]" style={{color:cat.color}}>Nejbližší událost</div>
+    <div className="relative mt-4 flex flex-col gap-5 sm:flex-row sm:items-center">
+      <div className="flex h-[104px] w-[88px] shrink-0 flex-col items-center justify-center rounded-3xl border" style={{borderColor:`${cat.color}55`,background:`linear-gradient(145deg,${cat.color}30,${cat.color}0c)`}}>
+        <div className="text-xs font-black uppercase tracking-wider" style={{color:cat.color}}>{d.toLocaleDateString("cs-CZ",{month:"short"}).replace(".","")}</div>
+        <div className="text-5xl font-black leading-none text-white">{d.getDate()}</div>
+        <div className="mt-1.5 text-[11px] font-semibold uppercase text-slate-300">{d.toLocaleDateString("cs-CZ",{weekday:"short"})}</div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold" style={{borderColor:`${cat.color}50`,background:`${cat.color}18`,color:cat.color}}>{cat.emoji} {cat.label}</span>
+          <span className="rounded-full bg-white/[0.07] px-2.5 py-1 text-[11px] font-black text-white">{dateCountdown(e.date,today)}</span>
+        </div>
+        <h2 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">{e.title}</h2>
+        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-300">
+          {e.time&&<span className="flex items-center gap-1.5"><Icon name="clock" size={15}/>{e.time}</span>}
+          <span className="flex items-center gap-1.5">📍 {e.place||"Bez místa"}</span>
+        </div>
+        {e.description&&<p className="mt-3 line-clamp-2 max-w-2xl text-sm text-slate-400">{e.description}</p>}
+        <div className="mt-4 flex items-center gap-3">
+          <div className="flex -space-x-2">{e.participants.slice(0,6).map(id=>{const p=people.find(x=>x.id===id);return p?<div key={id} className="rounded-full ring-2 ring-[#16100b]"><Avatar person={p} size={30}/></div>:null;})}</div>
+          <span className="text-xs text-slate-500">{e.participants.length?czechCount(e.participants.length,"účastník","účastníci","účastníků"):"Bez účastníků"}</span>
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+function EventCard({event:e,people,currentPerson,today,past=false,onOpen,onDelete}:{event:EventItem;people:Person[];currentPerson:Person|null;today:string;past?:boolean;onOpen:()=>void;onDelete:()=>void}){
+  const cat=EVENT_CATEGORIES[e.category??"other"];
+  const d=new Date(`${e.date}T12:00:00`);
+  return <div onClick={onOpen} className={`app-card group relative cursor-pointer overflow-hidden rounded-2xl border p-4 pl-5 transition hover:-translate-y-0.5 ${past?"opacity-60 hover:opacity-100":""}`} style={{borderColor:`${cat.color}28`}}>
+    <div className="absolute inset-y-0 left-0 w-1" style={{background:cat.color}}/>
+    <div className="flex items-center gap-3">
+      <div className="flex h-[62px] w-[52px] shrink-0 flex-col items-center justify-center rounded-xl border" style={{borderColor:`${cat.color}40`,background:`${cat.color}14`}}>
+        <div className="text-[9px] font-black uppercase tracking-wider" style={{color:cat.color}}>{d.toLocaleDateString("cs-CZ",{month:"short"}).replace(".","")}</div>
+        <div className="text-2xl font-black leading-none text-white">{d.getDate()}</div>
+        <div className="mt-0.5 text-[9px] font-semibold uppercase text-slate-400">{d.toLocaleDateString("cs-CZ",{weekday:"short"})}</div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate font-bold">{e.title}</h3>
+        <div className="mt-1 truncate text-xs text-slate-400">{cat.emoji} {cat.label}{e.time?` · ${e.time}`:""}{e.place?` · ${e.place}`:""}</div>
+        <div className={`mt-1 text-[10px] font-black uppercase tracking-wider ${past?"text-slate-500":e.date===today?"text-emerald-300":"theme-text"}`}>{past?"Proběhlo":dateCountdown(e.date,today)}</div>
+      </div>
+      <div className="flex -space-x-2">{e.participants.slice(0,3).map(id=>{const p=people.find(x=>x.id===id);return p?<div key={id} className="rounded-full ring-2 ring-[#16100b]"><Avatar person={p} size={26}/></div>:null;})}{e.participants.length>3&&<div className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-white/[0.08] text-[10px] font-bold ring-2 ring-[#16100b]">+{e.participants.length-3}</div>}</div>
+    </div>
+    {currentPerson?.authId===e.createdBy&&<button type="button" onClick={ev=>{ev.stopPropagation();onDelete();}} className="absolute right-3 top-2 text-[10px] text-slate-600 opacity-0 transition hover:text-red-400 group-hover:opacity-100">Smazat</button>}
+  </div>;
+}
+
 function EventsPage({events,people,currentPerson,openCreate,deleteEvent}:{events:EventItem[];people:Person[];currentPerson:Person|null;openCreate:()=>void;deleteEvent:(id:string)=>Promise<void>}){
   const [selectedEvent,setSelectedEvent]=useState<EventItem|null>(null);
-  return <div><PageHeader eyebrow="PLÁNY" title="Události" description="Společné akce, výlety a další plány." action={<button type="button" onClick={openCreate} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white"><Icon name="plus" size={16}/>Nová událost</button>}/><AutumnSectionTitle text="Podzimní plány"/>{events.length===0?<div className="rounded-3xl border border-dashed border-orange-300/10 bg-orange-300/[0.025] py-16 text-center"><div className="text-5xl">🍂</div><div className="mt-4 text-base font-semibold text-slate-300">Žádná událost</div></div>:<div className="grid gap-4 md:grid-cols-2">{events.map(e=><Card key={e.id} className="group cursor-pointer p-5 transition hover:-translate-y-1 hover:border-orange-300/20" ><div onClick={()=>setSelectedEvent(e)}><div className="flex items-start justify-between"><div><div className="text-xs text-orange-300">{formatDate(e.date)} · {e.time}</div><h3 className="mt-2 text-lg font-bold">{e.title}</h3><p className="mt-1 text-sm text-slate-500">{e.place||"Bez místa"}</p></div><span className="autumn-only text-2xl opacity-30">🍁</span></div><div className="mt-4 text-xs text-slate-500">Klikni pro detail události</div><div className="mt-4 flex -space-x-2">{e.participants.map(id=>{const p=people.find(x=>x.id===id);return p?<Avatar key={id} person={p} size={30}/>:null})}</div></div>{currentPerson?.authId===e.createdBy&&<button type="button" onClick={(event)=>{event.stopPropagation();deleteEvent(e.id)}} className="mt-4 text-xs text-slate-600 hover:text-red-400">Smazat událost</button>}</Card>)}</div>}{selectedEvent&&<EventDetailModal event={selectedEvent} people={people} onClose={()=>setSelectedEvent(null)}/>}</div>
+  const [category,setCategory]=useState<EventCategory|"all">("all");
+  const [showPast,setShowPast]=useState(false);
+  const today=isoToday();
+  const monthKey=today.slice(0,7);
+
+  const filtered=events.filter(e=>category==="all"||(e.category??"other")===category);
+  const upcoming=filtered.filter(e=>e.date>=today).sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
+  const past=filtered.filter(e=>e.date<today).sort((a,b)=>b.date.localeCompare(a.date)||b.time.localeCompare(a.time));
+  const hero=upcoming[0]??null;
+  const rest=upcoming.slice(1);
+
+  const groups:{key:string;items:EventItem[]}[]=[];
+  for(const e of rest){const key=e.date.slice(0,7);const g=groups.find(x=>x.key===key);if(g)g.items.push(e);else groups.push({key,items:[e]});}
+
+  const allUpcoming=events.filter(e=>e.date>=today);
+  const usedCategories=new Set(events.map(e=>e.category??"other"));
+  const countByCat=(Object.keys(EVENT_CATEGORIES) as EventCategory[]).map(c=>({c,count:allUpcoming.filter(e=>(e.category??"other")===c).length})).filter(x=>x.count>0);
+  const maxCat=Math.max(1,...countByCat.map(x=>x.count));
+
+  const confirmDelete=(e:EventItem)=>{if(confirm(`Opravdu smazat událost „${e.title}“?`))deleteEvent(e.id);};
+  const card=(e:EventItem,isPast=false)=><EventCard key={e.id} event={e} people={people} currentPerson={currentPerson} today={today} past={isPast} onOpen={()=>setSelectedEvent(e)} onDelete={()=>confirmDelete(e)}/>;
+
+  return <div>
+    <PageHeader eyebrow="PLÁNY" title="Události" description="Společné akce, výlety, sport a další plány." action={<button type="button" onClick={openCreate} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white"><Icon name="plus" size={16}/>Nová událost</button>}/>
+    <AutumnSectionTitle text="Podzimní plány"/>
+
+    <div className="mb-6 flex flex-wrap gap-2">
+      <FilterButton active={category==="all"} onClick={()=>setCategory("all")} label={`Vše (${events.length})`}/>
+      {(Object.keys(EVENT_CATEGORIES) as EventCategory[]).filter(c=>usedCategories.has(c)).map(c=>{const cat=EVENT_CATEGORIES[c];return <FilterButton key={c} active={category===c} onClick={()=>setCategory(c)} label={`${cat.emoji} ${cat.label}`} color={cat.color}/>;})}
+    </div>
+
+    {events.length===0
+      ?<div className="rounded-3xl border border-dashed border-orange-300/10 bg-orange-300/[0.025] py-16 text-center"><div className="text-5xl">🍂</div><div className="mt-4 text-base font-semibold text-slate-300">Zatím žádná událost</div><p className="mt-1 text-xs text-slate-500">Naplánuj sport, výlet nebo cokoli jiného.</p></div>
+      :<div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+        <div className="min-w-0">
+          {hero?<EventHero event={hero} people={people} today={today} onOpen={()=>setSelectedEvent(hero)}/>:<div className="mb-8"><Empty text="Žádné nadcházející události v téhle kategorii."/></div>}
+
+          {groups.map(g=><section key={g.key} className="mb-8">
+            <div className="mb-3 flex items-center gap-3">
+              <h2 className="text-xs font-black uppercase tracking-[.16em] text-orange-300/80">{new Date(`${g.key}-01T12:00:00`).toLocaleDateString("cs-CZ",{month:"long",year:"numeric"})}</h2>
+              <div className="h-px flex-1 bg-gradient-to-r from-orange-400/30 to-transparent"/>
+              <span className="text-[10px] font-bold text-slate-500">{g.items.length}</span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">{g.items.map(e=>card(e))}</div>
+          </section>)}
+
+          {past.length>0&&<section>
+            <button type="button" onClick={()=>setShowPast(v=>!v)} className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[.16em] text-slate-500 transition hover:text-slate-300">Proběhlé<span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px]">{past.length}</span><span className="text-[10px]">{showPast?"▲ skrýt":"▼ zobrazit"}</span></button>
+            {showPast&&<div className="grid gap-3 md:grid-cols-2">{past.map(e=>card(e,true))}</div>}
+          </section>}
+        </div>
+
+        <aside className="space-y-5 xl:sticky xl:top-8 xl:self-start">
+          <Card className="p-5">
+            <h2 className="font-bold">Přehled</h2>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="rounded-xl bg-black/20 p-3 text-center"><div className="text-2xl font-black">{allUpcoming.length}</div><div className="mt-0.5 text-[10px] text-slate-500">nadcházející</div></div>
+              <div className="rounded-xl bg-black/20 p-3 text-center"><div className="text-2xl font-black">{events.filter(e=>e.date.slice(0,7)===monthKey).length}</div><div className="mt-0.5 text-[10px] text-slate-500">tento měsíc</div></div>
+              <div className="rounded-xl bg-black/20 p-3 text-center"><div className="text-2xl font-black">{events.filter(e=>e.date===today).length}</div><div className="mt-0.5 text-[10px] text-slate-500">dnes</div></div>
+            </div>
+          </Card>
+          <Card className="p-5">
+            <h2 className="font-bold">Podle kategorie</h2>
+            <p className="mt-1 text-xs text-slate-500">Nadcházející události</p>
+            <div className="mt-4 space-y-3">
+              {countByCat.length===0?<div className="text-xs text-slate-600">Zatím nic.</div>:countByCat.map(({c,count})=>{const cat=EVENT_CATEGORIES[c];return <button type="button" key={c} onClick={()=>setCategory(category===c?"all":c)} className="block w-full text-left">
+                <div className="mb-1 flex items-center justify-between text-xs"><span className="font-semibold text-slate-200">{cat.emoji} {cat.label}</span><span className="font-black" style={{color:cat.color}}>{count}</span></div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full" style={{width:`${(count/maxCat)*100}%`,background:cat.color}}/></div>
+              </button>;})}
+            </div>
+          </Card>
+        </aside>
+      </div>}
+    {selectedEvent&&<EventDetailModal event={selectedEvent} people={people} onClose={()=>setSelectedEvent(null)}/>}
+  </div>
 }
 
 function StatsPage({stats,selectedId,setSelectedId,statsView,setStatsView,statsMonthKey,setStatsMonthKey,statsWeekStart,setStatsWeekStart,statsPeriod}:{stats:{person:Person;shifts:number;hours:number;minutes:number;totalMinutes:number;averageMinutesPerWeek:number;ratingAverage:number|null;ratedShifts:number;morning:number;afternoon:number;intershift:number;night:number;midnight:number;all_day:number;emergency:number;vacation:number;sick:number}[];selectedId:string|null;setSelectedId:(id:string)=>void;statsView:"months"|"weeks";setStatsView:(v:"months"|"weeks")=>void;statsMonthKey:string|null;setStatsMonthKey:(v:string|null)=>void;statsWeekStart:string|null;setStatsWeekStart:(v:string|null)=>void;statsPeriod:{start:string;end:string}|null}){
@@ -1803,16 +1946,24 @@ function EventModal({people,onClose,onSave}:{people:Person[];onClose:()=>void;on
   const[place,setPlace]=useState("");
   const[description,setDescription]=useState("");
   const[participants,setParticipants]=useState<string[]>([]);
+  const[category,setCategory]=useState<EventCategory>("sport");
   const[saving,setSaving]=useState(false);
 
   const submit=async()=>{
     if(!title.trim()||!date||saving)return;
     setSaving(true);
-    await onSave({id:"",title:title.trim(),date,time,place:place.trim(),description:description.trim(),participants});
+    await onSave({id:"",title:title.trim(),date,time,place:place.trim(),description:description.trim(),participants,category});
     setSaving(false);
   };
 
-  return <Modal onClose={onClose}><h2 className="font-bold">Nová událost</h2><div className="mt-5 space-y-4"><Input label="Název" value={title} onChange={setTitle}/><div className="grid grid-cols-2 gap-3"><ModernDateInput label="Datum" value={date} onChange={setDate}/><Input label="Čas" type="time" value={time} onChange={setTime}/></div><Input label="Místo" value={place} onChange={setPlace}/><div><label className="mb-2 block text-xs text-slate-400">Popis</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div><div><label className="mb-2 block text-xs text-slate-400">Účastníci</label><div className="flex flex-wrap gap-2">{people.map(p=><button type="button" key={p.id} onClick={()=>setParticipants(prev=>prev.includes(p.id)?prev.filter(x=>x!==p.id):[...prev,p.id])} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs" style={participants.includes(p.id)?{borderColor:`${p.color}60`,background:`${p.color}10`}:{borderColor:"rgba(255,255,255,.06)"}}><Avatar person={p} size={22}/>{p.name}</button>)}</div></div></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} disabled={saving} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs text-slate-400 disabled:opacity-50">Zrušit</button><button type="button" onClick={submit} disabled={saving||!title.trim()||!date} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(128,58,18,.22)] hover:brightness-110 disabled:opacity-50">{saving?"Vytvářím…":"Vytvořit"}</button></div></Modal>
+  return <Modal onClose={onClose}><h2 className="font-bold">Nová událost</h2><div className="mt-5 space-y-4">
+    <div>
+      <label className="mb-2 block text-xs text-slate-400">Kategorie</label>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {(Object.keys(EVENT_CATEGORIES) as EventCategory[]).map(c=>{const cat=EVENT_CATEGORIES[c];const active=category===c;return <button type="button" key={c} onClick={()=>setCategory(c)} className="flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-[11px] font-bold transition hover:-translate-y-0.5" style={active?{borderColor:`${cat.color}80`,background:`${cat.color}1c`,color:cat.color}:{borderColor:"rgba(255,255,255,.07)",color:"#94a3b8"}}><span className="text-xl">{cat.emoji}</span>{cat.label}</button>;})}
+      </div>
+    </div>
+    <Input label="Název" value={title} onChange={setTitle}/><div className="grid grid-cols-2 gap-3"><ModernDateInput label="Datum" value={date} onChange={setDate}/><Input label="Čas" type="time" value={time} onChange={setTime}/></div><Input label="Místo" value={place} onChange={setPlace}/><div><label className="mb-2 block text-xs text-slate-400">Popis</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div><div><label className="mb-2 block text-xs text-slate-400">Účastníci</label><div className="flex flex-wrap gap-2">{people.map(p=><button type="button" key={p.id} onClick={()=>setParticipants(prev=>prev.includes(p.id)?prev.filter(x=>x!==p.id):[...prev,p.id])} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs" style={participants.includes(p.id)?{borderColor:`${p.color}60`,background:`${p.color}10`}:{borderColor:"rgba(255,255,255,.06)"}}><Avatar person={p} size={22}/>{p.name}</button>)}</div></div></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} disabled={saving} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs text-slate-400 disabled:opacity-50">Zrušit</button><button type="button" onClick={submit} disabled={saving||!title.trim()||!date} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(128,58,18,.22)] hover:brightness-110 disabled:opacity-50">{saving?"Vytvářím…":"Vytvořit"}</button></div></Modal>
 }
 
 function PracticeModal({initialDate,onClose,onSave}:{initialDate?:string;onClose:()=>void;onSave:(p:PracticeItem)=>void}){const[date,setDate]=useState(initialDate||"");const[start,setStart]=useState("07:00");const[end,setEnd]=useState("14:00");const[note,setNote]=useState("");return <Modal onClose={onClose}><div className="flex items-center gap-2"><Icon name="briefcase"/><h2 className="font-bold">Přidat Davčův praxi</h2></div><div className="mt-5 space-y-4"><Input label="Datum" type="date" value={date} onChange={setDate}/><div className="grid grid-cols-2 gap-3"><Input label="Od" type="time" value={start} onChange={setStart}/><Input label="Do" type="time" value={end} onChange={setEnd}/></div><Input label="Poznámka" value={note} onChange={setNote}/></div><div className="mt-6 flex justify-end gap-2"><button onClick={onClose} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs text-slate-400">Zrušit</button><button onClick={()=>{if(date)onSave({id:crypto.randomUUID(),date,startTime:start,endTime:end,note})}} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(128,58,18,.22)] hover:brightness-110">Uložit</button></div></Modal>}
@@ -1868,7 +2019,7 @@ const AutumnDecor = memo(function AutumnDecor({animations}:{animations:boolean})
   </div>;
 });
 
-function EventDetailModal({event,people,onClose}:{event:EventItem;people:Person[];onClose:()=>void}){return <Modal onClose={onClose}><div className="flex items-start justify-between gap-4"><div><div className="text-xs font-bold text-orange-300">{formatDate(event.date)} · {event.time}</div><h2 className="mt-2 text-2xl font-black">{event.title}</h2></div><span className="text-3xl">🍁</span></div><div className="mt-6 grid gap-3 sm:grid-cols-2"><DetailBox label="Místo" value={event.place||"Bez místa"}/><DetailBox label="Čas" value={event.time||"Bez času"}/></div><div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 p-4"><div className="text-[10px] font-bold uppercase tracking-[.15em] text-slate-600">Poznámka / popis</div><div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{event.description||"Bez poznámky"}</div></div><div className="mt-5"><div className="text-xs font-bold text-slate-400">Účastníci</div><div className="mt-3 flex flex-wrap gap-2">{event.participants.length?event.participants.map(id=>{const p=people.find(x=>x.id===id);return p?<div key={id} className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs"><Avatar person={p} size={24}/>{p.name}</div>:null}):<span className="text-xs text-slate-600">Nikdo vybraný</span>}</div></div><button type="button" onClick={onClose} className="mt-6 w-full rounded-xl border border-white/[0.08] py-3 text-xs font-bold text-slate-300">Zavřít</button></Modal>}
+function EventDetailModal({event,people,onClose}:{event:EventItem;people:Person[];onClose:()=>void}){return <Modal onClose={onClose}><div className="flex items-start justify-between gap-4"><div>{(()=>{const cat=EVENT_CATEGORIES[event.category??"other"];return <span className="mb-2 inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold" style={{borderColor:`${cat.color}45`,background:`${cat.color}14`,color:cat.color}}>{cat.emoji} {cat.label}</span>;})()}<div className="text-xs font-bold text-orange-300">{formatDate(event.date)} · {event.time}</div><h2 className="mt-2 text-2xl font-black">{event.title}</h2></div><span className="text-3xl">{EVENT_CATEGORIES[event.category??"other"].emoji}</span></div><div className="mt-6 grid gap-3 sm:grid-cols-2"><DetailBox label="Místo" value={event.place||"Bez místa"}/><DetailBox label="Čas" value={event.time||"Bez času"}/></div><div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 p-4"><div className="text-[10px] font-bold uppercase tracking-[.15em] text-slate-600">Poznámka / popis</div><div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{event.description||"Bez poznámky"}</div></div><div className="mt-5"><div className="text-xs font-bold text-slate-400">Účastníci</div><div className="mt-3 flex flex-wrap gap-2">{event.participants.length?event.participants.map(id=>{const p=people.find(x=>x.id===id);return p?<div key={id} className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs"><Avatar person={p} size={24}/>{p.name}</div>:null}):<span className="text-xs text-slate-600">Nikdo vybraný</span>}</div></div><button type="button" onClick={onClose} className="mt-6 w-full rounded-xl border border-white/[0.08] py-3 text-xs font-bold text-slate-300">Zavřít</button></Modal>}
 function DetailBox({label,value}:{label:string;value:string}){return <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-4"><div className="text-[10px] font-bold uppercase tracking-[.15em] text-slate-600">{label}</div><div className="mt-2 text-sm font-semibold text-slate-200">{value}</div></div>}
 function ModernDateInput({label,value,onChange}:{label:string;value:string;onChange:(v:string)=>void}){return <div><label className="mb-2 block text-xs text-slate-400">{label}</label><div className="relative overflow-hidden rounded-xl border border-orange-300/15 bg-[linear-gradient(135deg,rgba(249,115,22,.07),rgba(0,0,0,.2))]"><div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-orange-300"><Icon name="calendar" size={16}/></div><input type="date" value={value} onChange={e=>onChange(e.target.value)} className="w-full bg-transparent py-3 pl-10 pr-4 text-sm outline-none [color-scheme:dark]"/></div></div>}
 
