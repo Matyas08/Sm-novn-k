@@ -1,11 +1,11 @@
 "use client";
 
-import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useState, createContext, useContext, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 
 type ShiftType = "morning" | "afternoon" | "intershift" | "night" | "midnight" | "all_day" | "emergency" | "vacation" | "sick";
 type TramRating = "mrdka" | "usla" | "topka";
-type Page = "overview" | "shifts" | "events" | "stats" | "updates" | "settings";
+type Page = "overview" | "shifts" | "events" | "stats" | "updates" | "settings" | "inbox";
 type AuthSession = { user?: { email?: string | null } } | null;
 type EventCategory = "sport" | "trip" | "party" | "food" | "family" | "school" | "other";
 
@@ -65,6 +65,10 @@ const AUTUMN_ACCENT_SECONDARY = "#ffd21f";
 const APP_VERSION = "2.1";
 const DAVID_AUTH_ID = "0989a80c-eaec-425b-a9e9-6ff0173c678d";
 const TRAM_REVIEW_EMAILS = new Set(["matejuher15@gmail.com"]);
+// ADMIN účet. ZMĚŇ na skutečný e-mail admina (stejný jako v admin-setup.sql a v Supabase Authentication).
+// Pozor: tohle jen ukazuje/skrývá tlačítka. Skutečná práva hlídá databáze (funkce is_admin() v SQL).
+const ADMIN_EMAILS = ["smenovnik@email.cz"];
+const isAdminEmail = (email?: string | null) => !!email && ADMIN_EMAILS.includes(email.toLowerCase());
 const TRAM_RATING_LABELS:Record<TramRating,string>={mrdka:"Mrdka",usla:"Ušla",topka:"Topka"};
 const EVENT_CATEGORIES: Record<EventCategory, { label: string; emoji: string; color: string }> = {
   sport:  { label: "Sport",  emoji: "🏃", color: "#4ade80" },
@@ -110,6 +114,7 @@ const loginUsers = [
   { name: "Matýsek", email: "matejuher15@gmail.com", color: "#6f8f72", avatar: "M" },
   { name: "Kuba", email: "jakub.proch145@seznam.cz", color: "#b84a3a", avatar: "K" },
   { name: "Cukr mamča", email: "lucieannapilarova97@gmail.com", color: "#facc15", avatar: "L" },
+  { name: "Admin", email: ADMIN_EMAILS[0], color: "#64748b", avatar: "A" },
 ] as const;
 
 const shiftInfo: Record<ShiftType, { label: string; short: string; color: string; icon: string }> = {
@@ -189,6 +194,8 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
     update: <svg {...common}><path d="M20 6v6h-6"/><path d="M20 12a8 8 0 1 1-2.3-5.7L20 8"/></svg>,
     leaf: <svg {...common}><path d="M20 4C12 4 5 8 5 15c0 3 2 5 5 5 7 0 10-8 10-16Z"/><path d="M5 20c3-5 7-8 12-11"/></svg>,
     check: <svg {...common}><path d="m5 12 4 4L19 6"/></svg>,
+    mail: <svg {...common}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>,
+    bell: <svg {...common}><path d="M6 9a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>,
   };
   return <span style={{ width: size, height: size, display: "inline-flex", flexShrink: 0 }}>{icons[name] ?? icons.info}</span>;
 }
@@ -429,6 +436,31 @@ function nearestOddWeekDays() {
   return ["Po", "Út", "St", "Čt", "Pá", "So"].map((day, index) => ({ day, date: toLocalDate(addDays(base, index)) }));
 }
 
+type MessageItem = { id: string; senderId: string; subject: string; body: string; at: string; recipientIds: string[]; readAt: string | null };
+type NotificationItem = { id: string; title: string; text: string; at: string; read: boolean; important: boolean; icon: string; showTime: boolean; shiftId?: string; test?: boolean; archived?: boolean };
+type SeenAutoNotification = { item: Omit<NotificationItem, "read" | "archived">; seenDay: string };
+
+function whenLabel(iso: string, showTime = true) {
+  const d = new Date(iso);
+  const sameDay = toLocalDate(d) === isoToday();
+  if (!showTime) return sameDay ? "dnes" : `${d.getDate()}. ${d.getMonth() + 1}.`;
+  const time = d.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+  return sameDay ? `dnes ${time}` : `${d.getDate()}. ${d.getMonth() + 1}. ${time}`;
+}
+
+type InboxCtxValue = { unreadMessages: number; unreadNotifications: number; openInbox: (tab: "all" | "message" | "notification") => void };
+const InboxCtx = createContext<InboxCtxValue>({ unreadMessages: 0, unreadNotifications: 0, openInbox: () => {} });
+
+function HeaderActions() {
+  const { unreadMessages, unreadNotifications, openInbox } = useContext(InboxCtx);
+  const btn = "relative flex h-10 w-10 items-center justify-center rounded-xl border border-orange-300/15 bg-black/20 text-slate-300 transition hover:border-orange-300/40 hover:text-orange-200";
+  const badge = (n: number) => n > 0 ? <span className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white">{n > 9 ? "9+" : n}</span> : null;
+  return <div className="flex items-center gap-2">
+    <button type="button" aria-label="Zprávy" title="Zprávy" onClick={() => openInbox("message")} className={btn}><Icon name="mail" size={19} />{badge(unreadMessages)}</button>
+    <button type="button" aria-label="Oznámení" title="Oznámení" onClick={() => openInbox("notification")} className={btn}><Icon name="bell" size={19} />{badge(unreadNotifications)}</button>
+  </div>;
+}
+
 export default function Home() {
   const [session, setSession] = useState<AuthSession>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -544,6 +576,199 @@ export default function Home() {
     return email ? people.find(p => p.email.toLowerCase() === email.toLowerCase()) ?? null : null;
   }, [people, session]);
 
+  const isAdmin = isAdminEmail(currentPerson?.email);
+  // Členové, kteří pracují na směnách (admin účet se v kalendáři, statistikách ani u událostí neukazuje)
+  const members = useMemo(() => people.filter(p => !isAdminEmail(p.email)), [people]);
+  const [shiftOwnerId, setShiftOwnerId] = useState("");
+  const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
+
+  const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [dbNotifications, setDbNotifications] = useState<NotificationItem[]>([]);
+  const [autoSeen, setAutoSeen] = useState<Record<string, SeenAutoNotification>>({});
+  const [autoReadIds, setAutoReadIds] = useState<string[]>([]);
+  const [inboxTab, setInboxTab] = useState<"all" | "message" | "notification">("message");
+  const [inboxTick, setInboxTick] = useState(0);
+  const [minuteTick, setMinuteTick] = useState(0);
+
+  useEffect(() => { const i = setInterval(() => setMinuteTick(t => t + 1), 60000); return () => clearInterval(i); }, []);
+
+  useEffect(() => {
+    if (!currentPerson) { setAutoReadIds([]); return; }
+    try { setAutoReadIds(JSON.parse(localStorage.getItem(`smenovnik-auto-read-${currentPerson.email}`) || "[]")); } catch { setAutoReadIds([]); }
+  }, [currentPerson]);
+
+  useEffect(() => {
+    if (!session || !currentPerson) { setMessages([]); setDbNotifications([]); return; }
+    let active = true;
+    let loadingInbox = false;
+    const load = async () => {
+      // Prevent a slow Supabase request from overlapping the next refresh.
+      if (loadingInbox) return;
+      loadingInbox = true;
+      try {
+      const [msgRes, notRes] = await Promise.all([
+        supabase.from("messages").select("id,sender_id,subject,body,created_at,message_recipients(user_id,read_at)").order("created_at", { ascending: false }).limit(200),
+        supabase.from("notifications").select("id,kind,title,body,important,created_at,read_at").order("created_at", { ascending: false }).limit(200),
+      ]);
+      if (!active) return;
+      if (msgRes.error) console.error("Chyba při načítání zpráv:", msgRes.error);
+      else setMessages((msgRes.data ?? []).map((m: any) => {
+        const recipients: { user_id: string; read_at: string | null }[] = m.message_recipients ?? [];
+        return { id: m.id, senderId: m.sender_id, subject: m.subject, body: m.body, at: m.created_at, recipientIds: recipients.map(r => r.user_id), readAt: recipients.find(r => r.user_id === currentPerson.id)?.read_at ?? null } as MessageItem;
+      }));
+      if (notRes.error) console.error("Chyba při načítání oznámení:", notRes.error);
+      else setDbNotifications((notRes.data ?? []).map((n: any) => ({ id: n.id, title: n.title, text: n.body, at: n.created_at, read: Boolean(n.read_at), important: Boolean(n.important), icon: n.kind === "shift" ? "calendar" : n.kind === "event" ? "event" : "bell", showTime: true } as NotificationItem)));
+      } finally {
+        loadingInbox = false;
+      }
+    };
+    load();
+    // Use a fixed polling interval and a fixed-size dependency array.
+    // This avoids React Fast Refresh errors when the dependency list changes size.
+    const interval = setInterval(load, 90000);
+    return () => { active = false; clearInterval(interval); };
+  }, [session, currentPerson?.id, inboxTick]);
+
+  // Automatická upozornění počítaná z dat, která už aplikace má
+  const autoNotifications = useMemo<NotificationItem[]>(() => {
+    if (!currentPerson) return [];
+    const list: Omit<NotificationItem, "read">[] = [];
+    const today = isoToday();
+    const dayIso = (n: number) => toLocalDate(addDays(new Date(`${today}T12:00:00`), n));
+    const tomorrow = dayIso(1);
+    const nowMs = Date.now();
+    const covers = (sh: Shift, iso: string) => sh.type === "vacation" ? iso >= sh.date && iso <= (sh.endDate || sh.date) : sh.date === iso;
+    const at = `${today}T00:00:00`;
+
+    // Důležité: já sám nemám zapsané směny na dnešek a další 2 dny (vidí jen dotyčný)
+    if (shifts.length > 0 && !loadingShifts && !isAdmin) {
+      const hasShift = [0, 1, 2].some(n => shifts.some(sh => sh.userId === currentPerson.id && covers(sh, dayIso(n))));
+      if (!hasShift) {
+        list.push({ id: `missing-${currentPerson.id}-${today}`, title: "Nemáš zapsané směny", text: "Na dnešek a další 2 dny nemáš zapsanou žádnou směnu. Doplň ji v kalendáři.", at, important: true, icon: "alert", showTime: false });
+      }
+    }
+
+    // Narozeniny dnes / zítra
+    for (const person of members) {
+      if (!person.birthday) continue;
+      const birthYear = Number(person.birthday.slice(0, 4));
+      for (const n of [0, 1]) {
+        const iso = dayIso(n);
+        if (iso.slice(5) !== person.birthday.slice(5)) continue;
+        const me = person.id === currentPerson.id;
+        const age = birthYear ? Number(iso.slice(0, 4)) - birthYear : 0;
+        list.push({ id: `bday-${person.id}-${iso}`, title: me ? (n === 0 ? "Všechno nejlepší! 🎉" : "Zítra máš narozeniny 🎂") : `${n === 0 ? "Dnes" : "Zítra"} má narozeniny ${person.name} 🎂`, text: age ? `${age}. narozeniny.` : "Nezapomeň pogratulovat.", at, important: false, icon: "heart", showTime: false });
+      }
+    }
+
+    // Moje směny: připomenutí zítřka a výzva k hodnocení
+    for (const sh of shifts) {
+      if (sh.userId !== currentPerson.id) continue;
+      if (sh.date === tomorrow && sh.type !== "vacation" && sh.type !== "sick") {
+        list.push({ id: `tomorrow-${sh.id}`, title: "Zítra máš směnu", text: `${shiftInfo[sh.type].label}${sh.type === "all_day" ? "" : ` · ${sh.startTime}–${sh.endTime}`}.`, at, important: false, icon: shiftInfo[sh.type].icon, showTime: false });
+      }
+      const avail = shiftRatingAvailableAt(sh);
+      if (sh.rating === null && avail && nowMs >= avail.getTime() && nowMs - avail.getTime() < 7 * 86400000) {
+        list.push({ id: `rate-${sh.id}`, title: "Jak se ti dařilo na směně?", text: `${shiftInfo[sh.type].label} · ${formatDate(sh.date)}. Stačí jedno klepnutí na hvězdičky.`, at: avail.toISOString(), important: false, icon: "check", showTime: true, shiftId: sh.id });
+      }
+    }
+
+    // Události, na které jsem pozvaný, dnes / zítra
+    for (const ev of events) {
+      if (!ev.participants.includes(currentPerson.id) || (ev.date !== today && ev.date !== tomorrow)) continue;
+      list.push({ id: `event-${ev.id}-${ev.date}`, title: `${ev.date === today ? "Dnes" : "Zítra"}: ${ev.title}`, text: `${ev.time ? `v ${ev.time}` : "bez udaného času"}${ev.place ? ` · ${ev.place}` : ""}`, at, important: false, icon: "event", showTime: false });
+    }
+
+    // Zkušební oznámení jen pro Tibíka (zobrazí se jednou, nic se neukládá)
+    if (currentPerson.email.toLowerCase() === "08matytibi3115@gmail.com" && !autoReadIds.includes("test-rate")) {
+      list.push({ id: "test-rate", title: "Jak se ti dařilo na směně? (zkouška)", text: "Zkušební oznámení. Takhle bude vypadat hodnocení po skončení směny. Klepni na hvězdičky, nic se neuloží.", at: new Date().toISOString(), important: false, icon: "check", showTime: true, test: true });
+    }
+
+    return list.map(item => ({ ...item, read: autoReadIds.includes(item.id) }));
+  }, [currentPerson, members, isAdmin, shifts, events, loadingShifts, autoReadIds, minuteTick]);
+
+  // Archiv: automatická upozornění se počítají z dat a po půlnoci by zmizela, proto si je
+  // pamatujeme v prohlížeči (pro každý e-mail zvlášť, max. 60 dní). Co přežije do dalšího dne, jde do archivu.
+  useEffect(() => {
+    if (!currentPerson) { setAutoSeen({}); return; }
+    const key = `smenovnik-notif-seen-${currentPerson.email}`;
+    let stored: Record<string, SeenAutoNotification> = {};
+    try { stored = JSON.parse(localStorage.getItem(key) || "{}") || {}; } catch { stored = {}; }
+    const today = isoToday();
+    let changed = false;
+    for (const n of autoNotifications) {
+      if (n.test || stored[n.id]) continue;
+      const { read: _read, archived: _archived, ...item } = n;
+      stored[n.id] = { item, seenDay: today };
+      changed = true;
+    }
+    const cutoff = toLocalDate(addDays(new Date(`${today}T12:00:00`), -60));
+    for (const id of Object.keys(stored)) {
+      if (stored[id].seenDay < cutoff) { delete stored[id]; changed = true; }
+    }
+    if (changed) { try { localStorage.setItem(key, JSON.stringify(stored)); } catch {} }
+    setAutoSeen(stored);
+  }, [autoNotifications, currentPerson]);
+
+  const notifications = useMemo<NotificationItem[]>(() => {
+    const today = isoToday();
+    const liveIds = new Set(autoNotifications.map(n => n.id));
+    const fromDb = dbNotifications.map(n => ({ ...n, archived: toLocalDate(new Date(n.at)) < today }));
+    const live = autoNotifications.map(n => ({ ...n, archived: !n.test && (autoSeen[n.id]?.seenDay ?? today) < today }));
+    const gone = Object.entries(autoSeen)
+      .filter(([id, seen]) => !liveIds.has(id) && seen.seenDay < today)
+      .map(([id, seen]) => ({ ...seen.item, read: autoReadIds.includes(id), archived: true }));
+    return [...fromDb, ...live, ...gone];
+  }, [dbNotifications, autoNotifications, autoSeen, autoReadIds, minuteTick]);
+
+  const sendMessage = async (to: string[], subject: string, body: string) => {
+    const { error } = await supabase.rpc("send_message", { p_subject: subject, p_body: body, p_recipients: to });
+    if (error) { alert(`Zprávu se nepodařilo odeslat: ${error.message}`); return false; }
+    setInboxTick(t => t + 1);
+    return true;
+  };
+  // Admin: smazání a úprava jakékoli zprávy
+  const deleteMessage = async (id: string) => {
+    if (!isAdmin) return false;
+    await supabase.from("message_recipients").delete().eq("message_id", id);
+    const { error } = await supabase.from("messages").delete().eq("id", id);
+    if (error) { alert(`Zprávu se nepodařilo smazat: ${error.message}`); return false; }
+    setMessages(prev => prev.filter(m => m.id !== id));
+    return true;
+  };
+  const editMessage = async (id: string, subject: string, body: string) => {
+    if (!isAdmin) return false;
+    const { error } = await supabase.from("messages").update({ subject, body }).eq("id", id);
+    if (error) { alert(`Zprávu se nepodařilo upravit: ${error.message}`); return false; }
+    setMessages(prev => prev.map(m => m.id === id ? { ...m, subject, body } : m));
+    return true;
+  };
+  const markMessageRead = async (id: string) => {
+    setMessages(prev => prev.map(m => m.id === id && !m.readAt ? { ...m, readAt: new Date().toISOString() } : m));
+    await supabase.rpc("mark_message_read", { p_message_id: id });
+  };
+  const markNotificationsRead = async (ids: string[]) => {
+    const dbIds = ids.filter(id => dbNotifications.some(n => n.id === id));
+    const autoIds = ids.filter(id => !dbIds.includes(id));
+    if (dbIds.length > 0) {
+      setDbNotifications(prev => prev.map(n => dbIds.includes(n.id) ? { ...n, read: true } : n));
+      await supabase.from("notifications").update({ read_at: new Date().toISOString() }).in("id", dbIds);
+    }
+    if (autoIds.length > 0 && currentPerson) {
+      setAutoReadIds(prev => {
+        const next = [...new Set([...prev, ...autoIds])].slice(-300);
+        try { localStorage.setItem(`smenovnik-auto-read-${currentPerson.email}`, JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+  };
+
+  const inboxCtx: InboxCtxValue = {
+    unreadMessages: currentPerson ? messages.filter(m => m.recipientIds.includes(currentPerson.id) && !m.readAt).length : 0,
+    unreadNotifications: notifications.filter(n => !n.read && !n.archived).length,
+    openInbox: (tab) => { setInboxTab(tab); setActivePage("inbox"); },
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthLoading(false); });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
@@ -643,7 +868,7 @@ export default function Home() {
     })();
   }, [session, people.length]);
 
-  useEffect(() => { if (currentPerson && !statsPersonId) setStatsPersonId(currentPerson.id); }, [currentPerson, statsPersonId]);
+  useEffect(() => { const first = isAdmin ? members[0] : currentPerson; if (first && !statsPersonId) setStatsPersonId(first.id); }, [currentPerson, isAdmin, members, statsPersonId]);
   useEffect(() => {
     if (!currentPerson) return;
     const saved = localStorage.getItem(`shift-theme-${currentPerson.email}`);
@@ -720,14 +945,18 @@ export default function Home() {
   const openAddShift = (date?: string) => {
     if (!currentPerson) return;
     const selectedDate = date || `${year}-${String(month+1).padStart(2,"0")}-01`;
+    setShiftOwnerId(isAdmin ? (selectedPerson && members.some(m => m.id === selectedPerson.id) ? selectedPerson.id : members[0]?.id ?? "") : currentPerson.id);
     setEditingShift(null); setShiftDate(selectedDate); setShiftEndDate(selectedDate); setShiftType("morning"); setStartTime("06:00"); setEndTime("14:00"); setNote(""); setShowShiftModal(true);
   };
   const openEditShift = (shift: Shift) => {
-    if (!currentPerson || shift.userId !== currentPerson.id) return;
+    if (!currentPerson || (shift.userId !== currentPerson.id && !isAdmin)) return;
+    setShiftOwnerId(shift.userId);
     setEditingShift(shift); setShiftDate(shift.date); setShiftEndDate(shift.endDate || shift.date); setShiftType(shift.type); setStartTime(shift.startTime); setEndTime(shift.endTime); setNote(shift.note || ""); setShowShiftModal(true);
   };
   const saveShift = async () => {
     if (!currentPerson || !shiftDate) return;
+    const ownerId = isAdmin ? (editingShift?.userId ?? shiftOwnerId) : currentPerson.id;
+    if (!ownerId) { alert("Vyber, komu se má směna zapsat."); return; }
     if (shiftType === "vacation" && (!shiftEndDate || shiftEndDate < shiftDate)) {
       alert("Datum konce dovolené musí být stejné nebo pozdější než datum začátku.");
       return;
@@ -736,7 +965,7 @@ export default function Home() {
     setSavingShift(true);
     const isVacation = shiftType === "vacation";
     const payload = {
-      user_id: currentPerson.id,
+      user_id: ownerId,
       date: shiftDate,
       end_date: isVacation ? shiftEndDate : null,
       start_time: isVacation ? "00:00" : startTime,
@@ -757,24 +986,33 @@ export default function Home() {
     setSavingShift(false);
   };
   const deleteShift = async () => {
-    if (!editingShift || !currentPerson || editingShift.userId !== currentPerson.id) return;
+    if (!editingShift || !currentPerson || (editingShift.userId !== currentPerson.id && !isAdmin)) return;
     const { error } = await supabase.from("shifts").delete().eq("id", editingShift.id);
     if (error) alert(error.message); else { setShifts(prev=>prev.filter(s=>s.id!==editingShift.id)); setShowShiftModal(false); setEditingShift(null); }
   };
 
   const saveShiftRating = async (shift: Shift, rating: number, ratingReason: string, tramNumber: string, tramRating: TramRating | null) => {
-    if (!currentPerson || shift.userId !== currentPerson.id) return false;
+    if (!currentPerson || (shift.userId !== currentPerson.id && !isAdmin)) return false;
     const availableAt = shiftRatingAvailableAt(shift);
-    if (!availableAt || Date.now() < availableAt.getTime() || rating < 0 || rating > 5) return false;
+    if (!availableAt || (!isAdmin && Date.now() < availableAt.getTime()) || rating < 0 || rating > 5) return false;
 
     const ratedAt = new Date().toISOString();
-    const { error } = await supabase.rpc("rate_own_shift", {
-      p_shift_id: shift.id,
-      p_rating: rating,
-      p_reason: ratingReason.trim() || null,
-      p_tram_number: tramNumber.trim() || null,
-      p_tram_rating: tramRating,
-    });
+    const { error } = shift.userId === currentPerson.id
+      ? await supabase.rpc("rate_own_shift", {
+          p_shift_id: shift.id,
+          p_rating: rating,
+          p_reason: ratingReason.trim() || null,
+          p_tram_number: tramNumber.trim() || null,
+          p_tram_rating: tramRating,
+        })
+      // admin upravuje hodnocení někoho jiného přímo (povolují to admin politiky v databázi)
+      : await supabase.from("shifts").update({
+          rating,
+          rating_reason: ratingReason.trim() || null,
+          rated_at: ratedAt,
+          tram_number: tramNumber.trim() || null,
+          tram_rating: tramRating,
+        }).eq("id", shift.id);
 
     if (error) {
       alert(`Hodnocení se nepodařilo uložit: ${error.message}`);
@@ -786,7 +1024,7 @@ export default function Home() {
   };
 
   const savePractice = async (item: PracticeItem) => {
-    if (!currentPerson || currentPerson.email !== "dkudlata9@gmail.com") return;
+    if (!currentPerson || (currentPerson.email !== "dkudlata9@gmail.com" && !isAdmin)) return;
 
     const { data, error } = await supabase
       .from("practices")
@@ -818,7 +1056,7 @@ export default function Home() {
   };
 
   const deletePractice = async (id: string) => {
-    if (!currentPerson || currentPerson.email !== "dkudlata9@gmail.com") return;
+    if (!currentPerson || (currentPerson.email !== "dkudlata9@gmail.com" && !isAdmin)) return;
 
     const { error } = await supabase
       .from("practices")
@@ -836,6 +1074,30 @@ export default function Home() {
   const saveEvent = async (item: EventItem) => {
     if (!currentPerson?.authId) {
       alert("Nepodařilo se zjistit přihlášeného uživatele.");
+      return;
+    }
+
+    // Admin: úprava existující události
+    if (item.id) {
+      if (!isAdmin) return;
+      const { error: updError } = await supabase.from("events").update({
+        title: item.title, event_date: item.date, event_time: item.time,
+        location: item.place || null, description: item.description || null, category: item.category ?? "other",
+      }).eq("id", item.id);
+      if (updError) { alert(`Událost se nepodařilo upravit: ${updError.message}`); return; }
+      const { error: delError } = await supabase.from("event_participants").delete().eq("event_id", item.id);
+      if (delError) { alert(`Účastníky se nepodařilo upravit: ${delError.message}`); return; }
+      const newParticipants = item.participants
+        .map(personId => people.find(person => person.id === personId))
+        .filter((person): person is Person => Boolean(person?.authId))
+        .map(person => ({ event_id: item.id, user_id: person.authId! }));
+      if (newParticipants.length > 0) {
+        const { error: insError } = await supabase.from("event_participants").insert(newParticipants);
+        if (insError) { alert(`Účastníky se nepodařilo uložit: ${insError.message}`); return; }
+      }
+      setEvents(prev => prev.map(e => e.id === item.id ? { ...e, title: item.title, date: item.date, time: item.time, place: item.place, description: item.description, participants: item.participants, category: item.category ?? "other" } : e).sort((a, b) => a.date.localeCompare(b.date)));
+      setEditingEvent(null);
+      setShowEventModal(false);
       return;
     }
 
@@ -896,7 +1158,7 @@ export default function Home() {
 
   const deleteEvent = async (id: string) => {
     const event = events.find(item => item.id === id);
-    if (!event || !currentPerson?.authId || event.createdBy !== currentPerson.authId) return;
+    if (!event || !currentPerson?.authId || (event.createdBy !== currentPerson.authId && !isAdmin)) return;
 
     const { error } = await supabase
       .from("events")
@@ -929,7 +1191,7 @@ export default function Home() {
       else shiftsByUser.set(shift.userId, [shift]);
     }
 
-    return people.map(person => {
+    return members.map(person => {
       const allPersonShifts = shiftsByUser.get(person.id) ?? [];
       const counts:Record<ShiftType,number>={morning:0,afternoon:0,intershift:0,night:0,midnight:0,all_day:0,emergency:0,vacation:0,sick:0};
       let totalMinutes=0;
@@ -975,7 +1237,7 @@ export default function Home() {
         ...counts
       };
     });
-  }, [people, shifts, statsPeriod]);
+  }, [members, shifts, statsPeriod]);
 
   if (authLoading) return <CenterMessage icon="calendar" text="Kontroluji přihlášení…" />;
   if (!session) return <LoginScreen selected={selectedLoginUser} setSelected={setSelectedLoginUser} password={loginPassword} setPassword={setLoginPassword} error={loginError} loading={loginLoading} onLogin={login} />;
@@ -983,7 +1245,7 @@ export default function Home() {
   const activeThemeColor = themeMode === "autumn" ? AUTUMN_ACCENT : themeColor;
   const activeThemeColor2 = themeMode === "autumn" ? AUTUMN_ACCENT_SECONDARY : themeColor2;
 
-  return <main
+  return <InboxCtx.Provider value={inboxCtx}><main
     className={`min-h-screen text-white ${themeMode === "classic" ? "classic-theme" : "autumn-theme"}`}
     style={{
       "--theme": activeThemeColor,
@@ -1060,27 +1322,28 @@ export default function Home() {
       .autumn-theme .autumn-neon-title { color:#ffc23a; text-shadow:0 0 22px rgba(255,135,0,.28); }
       .autumn-theme .autumn-leaf-accent { filter:drop-shadow(0 0 12px rgba(255,123,0,.35)); }
     `}</style>
-    {themeMode === "autumn" && <AutumnDecor animations={animationsEnabled} />}
+    {themeMode === "autumn" && <AutumnDecor animations={animationsEnabled && !isAdmin} />}
     <div className="flex min-h-screen">
       <Sidebar activePage={activePage} setActivePage={setActivePage} currentPerson={currentPerson} onLogout={logout} />
       <section className="w-full lg:ml-[252px]">
         <div className="w-full px-4 pb-28 pt-24 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 lg:pb-16 lg:pt-10">
-          {activePage === "overview" && <Overview people={people} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} davidWeek={davidWeek} setDavidWeek={setDavidWeek} practice={practice} openPractice={(date)=>{setPracticePresetDate(date||"");setShowPracticeModal(true);}} deletePractice={deletePractice} /> }
-          {activePage === "shifts" && <ShiftsPage people={people} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} goToToday={()=>{const n=new Date();setMonth(n.getMonth());setYear(n.getFullYear());}} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} saveShiftRating={saveShiftRating} loading={loadingShifts} autumn={themeMode === "autumn"} /> }
-          {activePage === "events" && <EventsPage events={events} people={people} currentPerson={currentPerson} openCreate={()=>setShowEventModal(true)} deleteEvent={deleteEvent} />}
+          {activePage === "overview" && <Overview people={members} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} davidWeek={davidWeek} setDavidWeek={setDavidWeek} practice={practice} openPractice={(date)=>{setPracticePresetDate(date||"");setShowPracticeModal(true);}} deletePractice={deletePractice} /> }
+          {activePage === "shifts" && <ShiftsPage people={members} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} goToToday={()=>{const n=new Date();setMonth(n.getMonth());setYear(n.getFullYear());}} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} saveShiftRating={saveShiftRating} loading={loadingShifts} autumn={themeMode === "autumn"} /> }
+          {activePage === "events" && <EventsPage events={events} people={members} currentPerson={currentPerson} openCreate={()=>{setEditingEvent(null);setShowEventModal(true);}} deleteEvent={deleteEvent} onEditEvent={(e:EventItem)=>{setEditingEvent(e);setShowEventModal(true);}} />}
           {activePage === "updates" && <UpdatesPage />}
+          {activePage === "inbox" && <InboxPage messages={messages} notifications={notifications} people={people} currentPerson={currentPerson} tab={inboxTab} shifts={shifts} onRateShift={saveShiftRating} onSend={sendMessage} onMarkMessageRead={markMessageRead} onMarkNotificationsRead={markNotificationsRead} isAdmin={isAdmin} onDeleteMessage={deleteMessage} onEditMessage={editMessage} />}
           {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} statsView={statsView} setStatsView={setStatsView} statsMonthKey={statsMonthKey} setStatsMonthKey={setStatsMonthKey} statsWeekStart={statsWeekStart} setStatsWeekStart={setStatsWeekStart} statsPeriod={statsPeriod} />}
-          {activePage === "settings" && <SettingsPage currentPerson={currentPerson} setPeople={setPeople} themeColor={themeColor} setThemeColor={setThemeColor} themeColor2={themeColor2} setThemeColor2={setThemeColor2} themeMode={themeMode} setThemeMode={setThemeMode} animationsEnabled={animationsEnabled} setAnimationsEnabled={setAnimationsEnabled} /> }
+          {activePage === "settings" && <SettingsPage members={members} currentPerson={currentPerson} setPeople={setPeople} themeColor={themeColor} setThemeColor={setThemeColor} themeColor2={themeColor2} setThemeColor2={setThemeColor2} themeMode={themeMode} setThemeMode={setThemeMode} animationsEnabled={animationsEnabled} setAnimationsEnabled={setAnimationsEnabled} /> }
         </div>
       </section>
     </div>
 
-    {showShiftModal && currentPerson && <ShiftModal person={currentPerson} editing={editingShift} date={shiftDate} setDate={setShiftDate} endDate={shiftEndDate} setEndDate={setShiftEndDate} type={shiftType} setType={setShiftType} start={startTime} setStart={setStartTime} end={endTime} setEnd={setEndTime} note={note} setNote={setNote} saving={savingShift} onClose={()=>setShowShiftModal(false)} onSave={saveShift} onDelete={deleteShift} />}
-    {showEventModal && <EventModal people={people} onClose={()=>setShowEventModal(false)} onSave={saveEvent} />}
-    {showPracticeModal && currentPerson?.email === "dkudlata9@gmail.com" && <PracticeModal initialDate={practicePresetDate} onClose={()=>setShowPracticeModal(false)} onSave={savePractice} />}
+    {showShiftModal && currentPerson && <ShiftModal person={people.find(p => p.id === (editingShift?.userId ?? shiftOwnerId)) ?? currentPerson} owners={isAdmin ? members : undefined} ownerId={shiftOwnerId} setOwnerId={setShiftOwnerId} editing={editingShift} date={shiftDate} setDate={setShiftDate} endDate={shiftEndDate} setEndDate={setShiftEndDate} type={shiftType} setType={setShiftType} start={startTime} setStart={setStartTime} end={endTime} setEnd={setEndTime} note={note} setNote={setNote} saving={savingShift} onClose={()=>setShowShiftModal(false)} onSave={saveShift} onDelete={deleteShift} />}
+    {showEventModal && <EventModal people={members} initial={editingEvent} onClose={()=>{setShowEventModal(false);setEditingEvent(null);}} onSave={saveEvent} />}
+    {showPracticeModal && (currentPerson?.email === "dkudlata9@gmail.com" || isAdmin) && <PracticeModal initialDate={practicePresetDate} onClose={()=>setShowPracticeModal(false)} onSave={savePractice} />}
     {showUpdateIntro && currentPerson && <UpdateIntroModal onDone={()=>{localStorage.setItem(`smenovnik-${APP_VERSION}-read-${currentPerson.email}`, "yes");setShowUpdateIntro(false);}} />}
     {showShiftSuccess && <ShiftSavedToast animations={animationsEnabled} />}
-  </main>;
+  </main></InboxCtx.Provider>;
 }
 
 function CenterMessage({ icon, text }: { icon: string; text: string }) { return <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0b0806] text-white"><div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(176,91,38,.14),transparent_36%)]"/><div className="pointer-events-none absolute right-[12%] top-[12%] text-6xl opacity-[0.08]">🍁</div><div className="relative text-center"><div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-orange-300/20 bg-orange-500/[0.08] text-orange-200 shadow-[0_0_40px_rgba(177,82,24,.18)]"><Icon name={icon} size={28}/></div><p className="text-sm text-stone-400">{text}</p></div></div>; }
@@ -1100,12 +1363,13 @@ function LoginScreen({ selected, setSelected, password, setPassword, error, load
         <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Kdo jsi?</h1>
         <p className="mt-2 text-sm text-stone-500">Vyber svůj účet a přihlas se</p>
       </div>
-      {!selected ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">{loginUsers.map((u,index)=><button key={u.email} onClick={()=>setSelected(u)} className="group relative overflow-hidden rounded-3xl border border-orange-200/[0.10] bg-[linear-gradient(145deg,rgba(31,24,19,.84),rgba(13,12,10,.90))] p-5 text-left shadow-[0_18px_45px_rgba(0,0,0,.18)] transition duration-300 hover:-translate-y-1 hover:border-orange-300/25 hover:bg-[linear-gradient(145deg,rgba(48,31,20,.92),rgba(18,14,11,.94))] hover:shadow-[0_20px_50px_rgba(86,38,11,.22)]">
+      {!selected ? <><div className="flex flex-wrap justify-center gap-3">{loginUsers.filter(u=>!isAdminEmail(u.email)).map((u,index)=><button key={u.email} onClick={()=>setSelected(u)} className="group relative w-[calc(50%-6px)] overflow-hidden rounded-3xl sm:w-[calc(33.333%-8px)] xl:w-[calc(20%-10px)] border border-orange-200/[0.10] bg-[linear-gradient(145deg,rgba(31,24,19,.84),rgba(13,12,10,.90))] p-5 text-left shadow-[0_18px_45px_rgba(0,0,0,.18)] transition duration-300 hover:-translate-y-1 hover:border-orange-300/25 hover:bg-[linear-gradient(145deg,rgba(48,31,20,.92),rgba(18,14,11,.94))] hover:shadow-[0_20px_50px_rgba(86,38,11,.22)]">
         <div className="pointer-events-none absolute -right-8 -top-8 text-5xl opacity-0 transition group-hover:opacity-[0.07]">{index%2?"🍂":"🍁"}</div>
         <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/[0.08] font-black text-white shadow-[0_10px_24px_rgba(0,0,0,.22)]" style={{background:`linear-gradient(145deg,${u.color}dd,${u.color}88)`}}>{u.avatar}</div>
         <div className="font-bold text-stone-100">{u.name}</div>
         <div className="mt-1 text-xs text-stone-600 transition group-hover:text-orange-200/60">Přihlásit se</div>
       </button>)}</div>
+        <div className="mt-8 flex justify-center">{loginUsers.filter(u=>isAdminEmail(u.email)).map(u=><button key={u.email} onClick={()=>setSelected(u)} className="flex items-center gap-2 rounded-full border border-white/[0.07] px-4 py-2 text-xs text-stone-600 transition hover:border-orange-300/25 hover:text-orange-200/80"><Icon name="lock" size={13}/>Přihlášení správce</button>)}</div></>
       : <div className="mx-auto max-w-[420px] rounded-[30px] border border-orange-200/[0.12] bg-[linear-gradient(145deg,rgba(31,23,18,.95),rgba(13,11,9,.97))] p-7 shadow-[0_30px_80px_rgba(0,0,0,.42),0_0_45px_rgba(112,48,14,.12)]">
         <div className="mb-6 flex items-center gap-4"><div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.08] font-bold text-white" style={{background:`linear-gradient(145deg,${selected.color}dd,${selected.color}88)`}}>{selected.avatar}</div><div><div className="font-bold">{selected.name}</div><div className="text-xs text-stone-500">{selected.email}</div></div></div>
         <label className="mb-2 block text-xs text-stone-400">Heslo</label>
@@ -1127,10 +1391,22 @@ function Sidebar({ activePage, setActivePage, currentPerson, onLogout }: { activ
     {page:"updates",icon:"update",label:"Aktualizace"},
     {page:"settings",icon:"settings",label:"Nastavení"},
   ];
-  return <><aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-[252px] border-r border-white/[0.07] bg-[#0e0b08]/90 px-5 py-6 shadow-[20px_0_60px_rgba(0,0,0,.18)] backdrop-blur-md lg:flex lg:flex-col"><div className="mb-9 flex items-center gap-3 px-2"><div className="flex h-11 w-11 items-center justify-center rounded-2xl border theme-soft theme-ring"><Icon name="calendar" size={24}/></div><div><div className="text-[15px] font-black tracking-tight">Směnovník <span className="text-[10px] theme-text">v{APP_VERSION}</span></div><div className="text-[11px] text-slate-500">směny, škola & společný čas</div></div></div><nav className="space-y-1.5">{items.map(i=><button key={i.page} onClick={()=>setActivePage(i.page)} className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm transition ${activePage===i.page?"border theme-soft":"border border-transparent text-slate-500 hover:bg-white/[0.03] hover:text-white"}`}><Icon name={i.icon} size={19}/>{i.label}{i.page==="updates"&&<span className="ml-auto rounded-full bg-orange-400/15 px-2 py-0.5 text-[9px] font-bold text-orange-300">2.1</span>}</button>)}</nav><div className="mt-auto">{currentPerson&&<div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3"><Avatar person={currentPerson} size={38}/><div><div className="text-sm font-semibold">{currentPerson.name}</div><div className="flex items-center gap-1.5 text-[11px] text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/>Přihlášen</div></div></div></div>}<button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"><Icon name="logout" size={19}/>Odhlásit se</button></div></aside><div className="app-sidebar fixed left-0 right-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#0e0b08]/90 px-4 backdrop-blur-md lg:hidden"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border theme-soft"><Icon name="calendar" size={20}/></div><span className="font-black">Směnovník</span></div><button onClick={onLogout} className="rounded-xl p-2 text-slate-400 hover:text-red-400"><Icon name="logout"/></button></div><nav className="app-sidebar fixed bottom-0 left-0 right-0 z-40 grid grid-cols-6 border-t border-white/[0.07] bg-[#0e0b08]/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md lg:hidden">{items.map(i=><button key={`mobile-${i.page}`} onClick={()=>setActivePage(i.page)} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[8px] font-semibold transition ${activePage===i.page?"theme-soft":"text-slate-500"}`}><Icon name={i.icon} size={17}/><span className="max-w-full truncate">{i.label}</span></button>)}</nav></>;
+  return <><aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-[252px] border-r border-white/[0.07] bg-[#0e0b08]/90 px-5 py-6 shadow-[20px_0_60px_rgba(0,0,0,.18)] backdrop-blur-md lg:flex lg:flex-col"><div className="mb-9 flex items-center gap-3 px-2"><div className="flex h-11 w-11 items-center justify-center rounded-2xl border theme-soft theme-ring"><Icon name="calendar" size={24}/></div><div><div className="text-[15px] font-black tracking-tight">Směnovník <span className="text-[10px] theme-text">v{APP_VERSION}</span></div><div className="text-[11px] text-slate-500">směny, škola & společný čas</div></div></div><nav className="space-y-1.5">{items.map(i=><button key={i.page} onClick={()=>setActivePage(i.page)} className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm transition ${activePage===i.page?"border theme-soft":"border border-transparent text-slate-500 hover:bg-white/[0.03] hover:text-white"}`}><Icon name={i.icon} size={19}/>{i.label}{i.page==="updates"&&<span className="ml-auto rounded-full bg-orange-400/15 px-2 py-0.5 text-[9px] font-bold text-orange-300">2.1</span>}</button>)}</nav><div className="mt-auto">{currentPerson&&<div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3"><Avatar person={currentPerson} size={38}/><div><div className="text-sm font-semibold">{currentPerson.name}</div><div className="flex items-center gap-1.5 text-[11px] text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/>{isAdminEmail(currentPerson.email)?"Administrátor":"Přihlášen"}</div></div></div></div>}<button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"><Icon name="logout" size={19}/>Odhlásit se</button></div></aside><div className="app-sidebar fixed left-0 right-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#0e0b08]/90 px-4 backdrop-blur-md lg:hidden"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border theme-soft"><Icon name="calendar" size={20}/></div><span className="font-black">Směnovník</span></div><div className="flex items-center gap-1"><HeaderActions /><button onClick={onLogout} className="rounded-xl p-2 text-slate-400 hover:text-red-400"><Icon name="logout"/></button></div></div><nav className="app-sidebar fixed bottom-0 left-0 right-0 z-40 grid grid-cols-6 border-t border-white/[0.07] bg-[#0e0b08]/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md lg:hidden">{items.map(i=><button key={`mobile-${i.page}`} onClick={()=>setActivePage(i.page)} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[8px] font-semibold transition ${activePage===i.page?"theme-soft":"text-slate-500"}`}><Icon name={i.icon} size={17}/><span className="max-w-full truncate">{i.label}</span></button>)}</nav></>;
 }
 
-function PageHeader({ eyebrow,title,description,action }: { eyebrow:string;title:string;description:string;action?:ReactNode }) { return <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><div className="mb-2 inline-flex rounded-full border theme-soft px-2.5 py-1 text-[9px] font-bold tracking-[.22em]">{eyebrow}</div><h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">{title}</h1><p className="mt-2 text-sm text-slate-400">{description}</p></div>{action}</div>; }
+function PageHeader({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
+  return <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
+    <div>
+      <div className="mb-2 inline-flex rounded-full border theme-soft px-2.5 py-1 text-[9px] font-bold tracking-[.22em]">{eyebrow}</div>
+      <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">{title}</h1>
+      <p className="mt-2 text-sm text-slate-400">{description}</p>
+    </div>
+    <div className="flex flex-col items-start gap-3 sm:items-end">
+      <div className="hidden lg:block"><HeaderActions /></div>
+      {action}
+    </div>
+  </div>;
+}
 function Card({children,className=""}:{children:ReactNode;className?:string}){return <div className={`app-card rounded-3xl border border-white/[0.08] bg-[linear-gradient(145deg,rgba(31,24,19,.96),rgba(14,12,10,.94))] shadow-[0_18px_50px_rgba(0,0,0,.22)] ${className}`}>{children}</div>}
 
 function dailyBoost(person: Person | null) {
@@ -1272,7 +1548,7 @@ function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift
   return <div><PageHeader eyebrow="SMĚNOVNÍK" title="Přehled" description="Všechno důležité na jednom místě." action={<div className="w-full rounded-2xl border border-orange-400/20 bg-black/20 px-5 py-3.5 backdrop-blur-sm sm:w-auto sm:min-w-[340px] xl:min-w-[390px]"><div className="text-[9px] font-bold uppercase tracking-[.18em] text-orange-300/70">Dnešní povzbuzení</div><div className="mt-1.5 text-sm font-semibold text-slate-200">{dailyBoost(currentPerson)}</div></div>}/><AutumnSectionTitle text="Podzimní přehled"/>
     <section className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{people.map(p=>{const todayShifts=todayShiftsByUser.get(p.id)??[];return <div key={p.id} role="button" tabIndex={0} aria-label={`Otevřít informace o směnách: ${p.name}`} onClick={()=>setDetailPerson(p)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setDetailPerson(p);}}} className="group relative flex cursor-pointer flex-col overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(31,24,19,.96),rgba(14,12,10,.94))] p-5 text-left transition hover:-translate-y-1 hover:bg-white/[0.03] focus:outline-none focus:ring-2 focus:ring-orange-400/60" style={{borderColor:`${p.color}38`}}><div className="autumn-only pointer-events-none absolute right-3 top-2 text-2xl opacity-20">🍂</div><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div className="min-w-0 flex-1"><div className="text-[15px] font-black">{p.name}</div></div></div><div className="relative mt-5 flex-1 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{todayShifts.length>0?<div className="space-y-2">{todayShifts.map(s=><div key={s.id} className="rounded-xl border px-3 py-2" style={{borderColor:`${shiftInfo[s.type].color}38`,background:`${shiftInfo[s.type].color}0d`}}><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-base font-black">{shiftTimeLabel(s)}</div></div>)}</div>:<div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div>}</div><div className="relative mt-3 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[.12em] text-slate-600 transition group-hover:text-orange-300"><span>Detail</span><Icon name="right" size={14}/></div></div>})}</section>
     <section className="mb-8 grid gap-5 xl:grid-cols-[1.75fr_.95fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-400">Seřazené podle toho, komu začíná směna nejdřív</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcomingGroups.map(group=><div key={group.key} className="space-y-2"><div className="px-1 pt-2 text-[11px] font-black uppercase tracking-[.14em] text-orange-300/80">{dayHeading(group.key,today)}</div>{group.items.map(s=>{const p=peopleById.get(s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="mt-1 text-xs font-extrabold theme-text">{shiftCountdown(s,clock)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-400">{shiftTimeLabel(s)}</div></div></div>})}</div>)}</div></Card><Card className="relative overflow-hidden p-6"><div className="pointer-events-none absolute -right-3 -top-4 text-6xl opacity-10">🍁</div><h2 className="font-bold">Informace</h2><p className="mt-1 text-xs text-slate-400">Dnešní rychlý přehled</p><div className="relative mx-auto mt-6 grid max-w-[390px] grid-cols-2 gap-3"><InfoBubble label="Směn tento měsíc" value={String(monthShiftCount)} icon="calendar"/><InfoBubble label="Směn dnes" value={String(todayShiftCount)} icon="clock"/><div className="col-span-2 mx-auto -my-1 flex h-28 w-28 flex-col items-center justify-center rounded-full border border-orange-300/25 bg-orange-500/10 text-center shadow-[0_0_45px_rgba(249,115,22,.12)]"><div className="text-2xl">🍂</div><div className="mt-1 text-sm font-black capitalize text-orange-200">{dateInfo.weekday}</div><div className="text-xs font-semibold text-orange-300/70">{dateInfo.date}</div></div><InfoBubble label="Událostí dnes" value={String(todayEventCount)} icon="event"/><InfoBubble label="Dnešní svátek" value={nameDay||"Načítám…"} icon="users" small/><div className="col-span-2"><InfoBubble label="Příští společné volno" icon="calendar" small value={commonFreeDay?dayHeading(commonFreeDay,today):"Zatím žádné v rozpisu"}/></div><div className="col-span-2"><InfoBubble label="Nejbližší událost" icon="event" small value={nextEvent?<><div className="truncate">{nextEvent.title}</div><div className="mt-1 text-xs font-semibold text-orange-200/80">{dateCountdown(nextEvent.date,today)} · {formatDate(nextEvent.date)}{nextEvent.time?` · ${nextEvent.time}`:""}</div></>:"Žádná naplánovaná"}/></div><div className="col-span-2"><InfoBubble label="Nejbližší narozeniny" icon="users" small value={nextBirthday?<><div className="truncate">🎂 {nextBirthday.person.name}</div><div className="mt-1 text-xs font-semibold text-orange-200/80">{dateCountdown(nextBirthday.date,today)} · {new Date(`${nextBirthday.date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})} · {nextBirthday.age}. narozeniny</div></>:"Zatím nikdo nemá zadané datum narození"}/></div></div></Card></section>
-    <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy na jednom místě.</p></div><div className="grid gap-6"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} weekParity={tibiWeek} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden{thisWeekBadge("odd")}</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden{thisWeekBadge("even")}</SmallToggle></div>}/><div><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="text-xl opacity-70">🍂</span><div><h3 className="font-bold text-[#f1e7dc]">Davčův rozvrh</h3><p className="text-xs text-[#9f8d7e]">Sudý = škola, lichý = praxe</p></div></div><div className="flex gap-2"><SmallToggle active={davidWeek==="odd"} onClick={()=>setDavidWeek("odd")}>Lichý týden{thisWeekBadge("odd")}</SmallToggle><SmallToggle active={davidWeek==="even"} onClick={()=>setDavidWeek("even")}>Sudý týden{thisWeekBadge("even")}</SmallToggle></div></div>{davidWeek==="even"?<SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool} weekParity="even"/>:<DavidPracticeSchedule practice={practice} canEdit={currentPerson?.email==="dkudlata9@gmail.com"} onAdd={openPractice} onDelete={deletePractice}/>}</div></div></section>
+    <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy na jednom místě.</p></div><div className="grid gap-6"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} weekParity={tibiWeek} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden{thisWeekBadge("odd")}</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden{thisWeekBadge("even")}</SmallToggle></div>}/><div><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="text-xl opacity-70">🍂</span><div><h3 className="font-bold text-[#f1e7dc]">Davčův rozvrh</h3><p className="text-xs text-[#9f8d7e]">Sudý = škola, lichý = praxe</p></div></div><div className="flex gap-2"><SmallToggle active={davidWeek==="odd"} onClick={()=>setDavidWeek("odd")}>Lichý týden{thisWeekBadge("odd")}</SmallToggle><SmallToggle active={davidWeek==="even"} onClick={()=>setDavidWeek("even")}>Sudý týden{thisWeekBadge("even")}</SmallToggle></div></div>{davidWeek==="even"?<SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool} weekParity="even"/>:<DavidPracticeSchedule practice={practice} canEdit={currentPerson?.email==="dkudlata9@gmail.com"||isAdminEmail(currentPerson?.email)} onAdd={openPractice} onDelete={deletePractice}/>}</div></div></section>
     {detailPerson&&(()=>{
       const currentShift=shifts
         .filter(s=>s.userId===detailPerson.id&&s.type!=="vacation"&&s.type!=="sick")
@@ -1550,7 +1826,7 @@ function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerso
       <div className="mt-5 space-y-2">{(shiftsByDate.get(dayDetail)??[]).map(s=>{const person=peopleById.get(s.userId);if(!person)return null;return <ShiftChip key={s.id} shift={s} person={person} date={dayDetail} dim={false} onClick={()=>{setDayDetail(null);setDetailShift(s);}}/>;})}</div>
       {currentPerson&&<button type="button" onClick={()=>{const d=dayDetail;setDayDetail(null);openAddShift(d);}} className="mt-5 w-full rounded-xl theme-primary py-3 text-xs font-bold text-white hover:brightness-110">Přidat směnu na tento den</button>}
     </Modal>}
-    {detailShift&&<ShiftDetailModal shift={detailShift} person={peopleById.get(detailShift.userId) || null} editable={currentPerson?.id===detailShift.userId} onClose={()=>setDetailShift(null)} onEdit={()=>{const shift=detailShift;setDetailShift(null);openEditShift(shift);}} onSaveRating={saveShiftRating}/>}
+    {detailShift&&<ShiftDetailModal shift={detailShift} person={peopleById.get(detailShift.userId) || null} editable={currentPerson?.id===detailShift.userId||isAdminEmail(currentPerson?.email)} isAdmin={isAdminEmail(currentPerson?.email)} canManage={isAdminEmail(currentPerson?.email)} onClose={()=>setDetailShift(null)} onEdit={()=>{const shift=detailShift;setDetailShift(null);openEditShift(shift);}} onSaveRating={saveShiftRating}/>}
   </div>;
 }
 
@@ -1572,7 +1848,7 @@ function ShiftChip({shift,person,date,dim,onClick}:{shift:Shift;person:Person;da
   </div>;
 }
 
-function ShiftDetailModal({shift,person,editable,onClose,onEdit,onSaveRating}:{shift:Shift;person:Person|null;editable:boolean;onClose:()=>void;onEdit:()=>void;onSaveRating:(shift:Shift,rating:number,reason:string,tramNumber:string,tramRating:TramRating|null)=>Promise<boolean>}){
+function ShiftDetailModal({shift,person,editable,canManage,isAdmin,onClose,onEdit,onSaveRating}:{isAdmin?:boolean;canManage?:boolean;shift:Shift;person:Person|null;editable:boolean;onClose:()=>void;onEdit:()=>void;onSaveRating:(shift:Shift,rating:number,reason:string,tramNumber:string,tramRating:TramRating|null)=>Promise<boolean>}){
   const info=shiftInfo[shift.type];
   const [clock,setClock]=useState(()=>Date.now());
   const [rating,setRating]=useState<number|null>(shift.rating);
@@ -1586,7 +1862,7 @@ function ShiftDetailModal({shift,person,editable,onClose,onEdit,onSaveRating}:{s
     return()=>clearInterval(interval);
   },[]);
   const availableAt=shiftRatingAvailableAt(shift);
-  const canRate=editable&&availableAt!==null&&clock>=availableAt.getTime();
+  const canRate=editable&&availableAt!==null&&(Boolean(isAdmin)||clock>=availableAt.getTime());
   const minutesUntilRating=availableAt?Math.max(1,Math.ceil((availableAt.getTime()-clock)/60000)):0;
   const submitRating=async()=>{
     if(rating===null||!canRate)return;
@@ -1653,9 +1929,9 @@ function ShiftDetailModal({shift,person,editable,onClose,onEdit,onSaveRating}:{s
     </div>
 
     <div className="mt-6 flex items-center gap-2">
-      {!editable&&<div className="mr-auto flex items-center gap-1.5 text-[11px] text-slate-600"><Icon name="lock" size={13}/>Pouze ke čtení</div>}
-      <button type="button" onClick={onClose} className={`${editable?"ml-auto":""} rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-white/[0.04]`}>Zavřít</button>
-      {editable&&<button type="button" onClick={onEdit} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white hover:brightness-110">Upravit směnu</button>}
+      {!editable&&!canManage&&<div className="mr-auto flex items-center gap-1.5 text-[11px] text-slate-600"><Icon name="lock" size={13}/>Pouze ke čtení</div>}
+      <button type="button" onClick={onClose} className={`${editable||canManage?"ml-auto":""} rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-white/[0.04]`}>Zavřít</button>
+      {(editable||canManage)&&<button type="button" onClick={onEdit} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white hover:brightness-110">Upravit směnu</button>}
     </div>
   </Modal>
 }
@@ -1721,11 +1997,11 @@ function EventCard({event:e,people,currentPerson,today,past=false,onOpen,onDelet
       </div>
       <div className="flex -space-x-2">{e.participants.slice(0,3).map(id=>{const p=people.find(x=>x.id===id);return p?<div key={id} className="rounded-full ring-2 ring-[#16100b]"><Avatar person={p} size={26}/></div>:null;})}{e.participants.length>3&&<div className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-white/[0.08] text-[10px] font-bold ring-2 ring-[#16100b]">+{e.participants.length-3}</div>}</div>
     </div>
-    {currentPerson?.authId===e.createdBy&&<button type="button" onClick={ev=>{ev.stopPropagation();onDelete();}} className="absolute right-3 top-2 text-[10px] text-slate-600 opacity-0 transition hover:text-red-400 group-hover:opacity-100">Smazat</button>}
+    {(currentPerson?.authId===e.createdBy||isAdminEmail(currentPerson?.email))&&<button type="button" onClick={ev=>{ev.stopPropagation();onDelete();}} className="absolute right-3 top-2 text-[10px] text-slate-600 opacity-0 transition hover:text-red-400 group-hover:opacity-100">Smazat</button>}
   </div>;
 }
 
-function EventsPage({events,people,currentPerson,openCreate,deleteEvent}:{events:EventItem[];people:Person[];currentPerson:Person|null;openCreate:()=>void;deleteEvent:(id:string)=>Promise<void>}){
+function EventsPage({events,people,currentPerson,openCreate,deleteEvent,onEditEvent}:{onEditEvent:(e:EventItem)=>void;events:EventItem[];people:Person[];currentPerson:Person|null;openCreate:()=>void;deleteEvent:(id:string)=>Promise<void>}){
   const [selectedEvent,setSelectedEvent]=useState<EventItem|null>(null);
   const [category,setCategory]=useState<EventCategory|"all">("all");
   const [showPast,setShowPast]=useState(false);
@@ -1800,7 +2076,7 @@ function EventsPage({events,people,currentPerson,openCreate,deleteEvent}:{events
           </Card>
         </aside>
       </div>}
-    {selectedEvent&&<EventDetailModal event={selectedEvent} people={people} onClose={()=>setSelectedEvent(null)}/>}
+    {selectedEvent&&<EventDetailModal event={selectedEvent} people={people} onClose={()=>setSelectedEvent(null)} onEdit={isAdminEmail(currentPerson?.email)?()=>{const ev=selectedEvent;setSelectedEvent(null);onEditEvent(ev);}:undefined}/>}
   </div>
 }
 
@@ -1878,7 +2154,24 @@ function StatsPage({stats,selectedId,setSelectedId,statsView,setStatsView,statsM
 }
 function StatBox({label,value,color}:{label:string;value:ReactNode;color?:string}){return <div className="rounded-2xl border bg-white/[0.025] p-4" style={color?{borderColor:`${color}30`,background:`linear-gradient(135deg, ${color}10, rgba(255,255,255,.015))`}:{borderColor:"rgba(255,255,255,.05)"}}><div className="text-xs" style={color?{color}:{color:"#64748b"}}>{label}</div><div className="mt-1 text-2xl font-black text-white">{value}</div></div>}
 
-function SettingsPage({currentPerson,setPeople,themeColor,setThemeColor,themeColor2,setThemeColor2,themeMode,setThemeMode,animationsEnabled,setAnimationsEnabled}:{currentPerson:Person|null;setPeople:React.Dispatch<React.SetStateAction<Person[]>>;themeColor:string;setThemeColor:(v:string)=>void;themeColor2:string;setThemeColor2:(v:string)=>void;themeMode:"autumn"|"classic";setThemeMode:(v:"autumn"|"classic")=>void;animationsEnabled:boolean;setAnimationsEnabled:(v:boolean)=>void}){
+function AdminMembersPanel({members,setPeople}:{members:Person[];setPeople:React.Dispatch<React.SetStateAction<Person[]>>}){
+  const[drafts,setDrafts]=useState<Record<string,{name:string;birthday:string}>>({});
+  const[msg,setMsg]=useState("");
+  const get=(p:Person)=>drafts[p.id]??{name:p.name,birthday:p.birthday||""};
+  const save=async(p:Person)=>{
+    const d=get(p);
+    if(!d.name.trim()){setMsg("Jméno nesmí být prázdné.");return;}
+    const{error}=await supabase.from("users").update({name:d.name.trim(),birthday:d.birthday||null}).eq("id",p.id);
+    if(error){setMsg(`Nepodařilo se uložit: ${error.message}`);return;}
+    setPeople(prev=>prev.map(x=>x.id===p.id?{...x,name:d.name.trim(),birthday:d.birthday||null}:x));
+    setDrafts(prev=>{const n={...prev};delete n[p.id];return n;});
+    setMsg(`Uloženo: ${d.name.trim()}.`);
+  };
+  const field="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2 text-sm outline-none focus:border-orange-300/40";
+  return <div className="mt-5 rounded-2xl border border-orange-300/15 bg-orange-400/[0.04] p-4"><div className="flex items-center gap-2 font-semibold"><span>🛡️</span>Správa členů (admin)</div><p className="mt-2 text-xs leading-5 text-slate-500">Uprav jméno a datum narození kohokoli.</p><div className="mt-3 space-y-2">{members.map(p=>{const d=get(p);const changed=d.name!==p.name||d.birthday!==(p.birthday||"");return <div key={p.id} className="flex flex-wrap items-center gap-2"><Avatar person={p} size={30}/><input value={d.name} onChange={e=>setDrafts(prev=>({...prev,[p.id]:{...d,name:e.target.value}}))} className={`${field} min-w-[120px] flex-1`}/><input type="date" value={d.birthday} onChange={e=>setDrafts(prev=>({...prev,[p.id]:{...d,birthday:e.target.value}}))} className={field}/><button type="button" disabled={!changed} onClick={()=>save(p)} className="rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-30">Uložit</button></div>;})}</div>{msg&&<div className="mt-3 text-xs text-emerald-300">{msg}</div>}</div>;
+}
+
+function SettingsPage({currentPerson,setPeople,members,themeColor,setThemeColor,themeColor2,setThemeColor2,themeMode,setThemeMode,animationsEnabled,setAnimationsEnabled}:{members?:Person[];currentPerson:Person|null;setPeople:React.Dispatch<React.SetStateAction<Person[]>>;themeColor:string;setThemeColor:(v:string)=>void;themeColor2:string;setThemeColor2:(v:string)=>void;themeMode:"autumn"|"classic";setThemeMode:(v:"autumn"|"classic")=>void;animationsEnabled:boolean;setAnimationsEnabled:(v:boolean)=>void}){
   const [oldPassword,setOldPassword]=useState("");
   const [newPassword,setNewPassword]=useState("");
   const [newAgain,setNewAgain]=useState("");
@@ -1905,7 +2198,7 @@ function SettingsPage({currentPerson,setPeople,themeColor,setThemeColor,themeCol
     <Card className="p-6"><div className="flex items-center gap-2"><Icon name="camera" size={18}/><h2 className="font-bold">Profil</h2></div>{currentPerson&&<>
       <div className="mt-5 flex items-center gap-4 rounded-2xl bg-black/20 p-4"><Avatar person={currentPerson} size={68}/><div><div className="font-bold">{currentPerson.name}</div><div className="text-xs text-slate-500">{currentPerson.email}</div><div className="mt-1 text-[11px] text-slate-600">Profilová barva je pevná; vzhled webu nastavíš vedle.</div></div></div>
       <div className="mt-5 rounded-2xl border border-white/[0.08] bg-black/15 p-4"><div className="flex items-center gap-2 font-semibold"><Icon name="camera" size={17}/>Profilová fotka</div><p className="mt-2 text-xs text-slate-600">JPG, PNG nebo WEBP.</p><label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.04] px-4 py-3 text-xs font-semibold hover:bg-white/[0.07]"><Icon name="camera" size={15}/>{uploadingAvatar?"Nahrávám…":"Vybrat a uložit fotku"}<input disabled={uploadingAvatar} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e=>uploadAvatar(e.target.files?.[0])}/></label></div>
-      <div className="mt-5 rounded-2xl border border-white/[0.08] bg-black/15 p-4"><div className="flex items-center gap-2 font-semibold"><span>🎂</span>Narozeniny</div><p className="mt-2 text-xs leading-5 text-slate-600">Nastav celé datum narození. Ostatní ho uvidí v kalendáři a v den narozenin se automaticky zobrazí i tvůj aktuální věk.</p><div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"><div className="flex-1"><Input label="Datum narození" type="date" value={birthday} onChange={setBirthday}/></div><button type="button" onClick={saveBirthday} disabled={birthdaySaving} className="h-[46px] rounded-xl theme-primary px-5 text-xs font-bold text-white hover:brightness-110 disabled:opacity-50">{birthdaySaving?"Ukládám…":"Uložit narozeniny"}</button>{birthday&&<button type="button" onClick={()=>setBirthday("")} className="h-[46px] rounded-xl border border-white/[0.08] px-4 text-xs text-slate-400 hover:bg-white/[0.04]">Vymazat</button>}</div>{birthdayMessage&&<div className="mt-3 text-xs text-slate-400">{birthdayMessage}</div>}</div>
+      {isAdminEmail(currentPerson?.email)&&members&&<AdminMembersPanel members={members} setPeople={setPeople}/>}<div className="mt-5 rounded-2xl border border-white/[0.08] bg-black/15 p-4"><div className="flex items-center gap-2 font-semibold"><span>🎂</span>Narozeniny</div><p className="mt-2 text-xs leading-5 text-slate-600">Nastav celé datum narození. Ostatní ho uvidí v kalendáři a v den narozenin se automaticky zobrazí i tvůj aktuální věk.</p><div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"><div className="flex-1"><Input label="Datum narození" type="date" value={birthday} onChange={setBirthday}/></div><button type="button" onClick={saveBirthday} disabled={birthdaySaving} className="h-[46px] rounded-xl theme-primary px-5 text-xs font-bold text-white hover:brightness-110 disabled:opacity-50">{birthdaySaving?"Ukládám…":"Uložit narozeniny"}</button>{birthday&&<button type="button" onClick={()=>setBirthday("")} className="h-[46px] rounded-xl border border-white/[0.08] px-4 text-xs text-slate-400 hover:bg-white/[0.04]">Vymazat</button>}</div>{birthdayMessage&&<div className="mt-3 text-xs text-slate-400">{birthdayMessage}</div>}</div>
     </>}</Card>
     <Card className="p-6"><div className="flex items-center gap-2"><Icon name="palette" size={18}/><h2 className="font-bold">Vzhled webu</h2></div><p className="mt-4 text-sm text-slate-400">Namíchej si vlastní kombinaci dvou barev. Použije se na pozadí, tlačítka, aktivní navigaci, zvýraznění a glow efekty.</p>
       <div className="mt-5 rounded-2xl border theme-border bg-black/20 p-4">
@@ -1937,33 +2230,33 @@ function SettingsPage({currentPerson,setPeople,themeColor,setThemeColor,themeCol
 }
 function PasswordInput({label,value,onChange}:{label:string;value:string;onChange:(v:string)=>void}){return <div><label className="mb-2 block text-xs text-slate-400">{label}</label><input type="password" value={value} onChange={e=>onChange(e.target.value)} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-orange-300/45 focus:ring-2 focus:ring-orange-500/10"/></div>}
 
-function ShiftModal({person,editing,date,setDate,endDate,setEndDate,type,setType,start,setStart,end,setEnd,note,setNote,saving,onClose,onSave,onDelete}:{person:Person;editing:Shift|null;date:string;setDate:(v:string)=>void;endDate:string;setEndDate:(v:string)=>void;type:ShiftType;setType:(v:ShiftType)=>void;start:string;setStart:(v:string)=>void;end:string;setEnd:(v:string)=>void;note:string;setNote:(v:string)=>void;saving:boolean;onClose:()=>void;onSave:()=>void;onDelete:()=>void}){return <Modal onClose={onClose}><div className="flex items-center gap-3"><Avatar person={person} size={44}/><div><h2 className="font-bold">{editing?"Upravit směnu":"Přidat směnu"}</h2><p className="text-xs text-slate-500">{person.name}</p></div></div><div className="mt-5 space-y-4"><div><label className="mb-2 block text-xs text-slate-400">{type==="vacation"?"Datum od":"Datum"}</label><input type="date" value={date} onChange={e=>{const value=e.target.value;setDate(value);if(type==="vacation"&&(!endDate||endDate<value))setEndDate(value);}} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-orange-300/45 focus:ring-2 focus:ring-orange-500/10"/></div><div><label className="mb-2 block text-xs text-slate-400">Typ směny</label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{(Object.keys(shiftInfo) as ShiftType[]).map(t=><button key={t} onClick={()=>{setType(t);if(t==="vacation"){setEndDate(endDate||date);setStart("00:00");setEnd("23:59");}else if(t==="all_day"){setStart("00:00");setEnd("23:59");}else if(t==="intershift"){setStart("10:00");setEnd("18:00");}else if(t==="midnight"){setStart("00:00");setEnd("08:00");}}} className="flex items-center gap-2 rounded-xl border p-3 text-xs font-semibold" style={type===t?{borderColor:`${shiftInfo[t].color}70`,background:`${shiftInfo[t].color}12`,color:shiftInfo[t].color}:{borderColor:"rgba(255,255,255,.06)",color:"#94a3b8"}}><Icon name={shiftInfo[t].icon} size={15}/>{shiftInfo[t].short}</button>)}</div></div>{type==="vacation"?<Input label="Datum do" type="date" value={endDate} onChange={setEndDate}/>:<div className="grid grid-cols-2 gap-3"><Input label="Od" type="time" value={start} onChange={setStart}/><Input label="Do" type="time" value={end} onChange={setEnd}/></div>}<div><label className="mb-2 block text-xs text-slate-400">Poznámka</label><textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div></div><div className="mt-6 flex gap-2">{editing&&<button onClick={onDelete} className="rounded-xl border border-red-500/20 px-4 py-3 text-xs font-semibold text-red-400">Smazat</button>}<button onClick={onClose} className="ml-auto rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-400">Zrušit</button><button onClick={onSave} disabled={saving} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(128,58,18,.22)] hover:brightness-110 disabled:opacity-50">{saving?"Ukládám…":"Uložit"}</button></div></Modal>}
+function ShiftModal({person,editing,date,setDate,endDate,setEndDate,type,setType,start,setStart,end,setEnd,note,setNote,saving,onClose,onSave,onDelete,owners,ownerId,setOwnerId}:{owners?:Person[];ownerId?:string;setOwnerId?:(id:string)=>void;person:Person;editing:Shift|null;date:string;setDate:(v:string)=>void;endDate:string;setEndDate:(v:string)=>void;type:ShiftType;setType:(v:ShiftType)=>void;start:string;setStart:(v:string)=>void;end:string;setEnd:(v:string)=>void;note:string;setNote:(v:string)=>void;saving:boolean;onClose:()=>void;onSave:()=>void;onDelete:()=>void}){return <Modal onClose={onClose}><div className="flex items-center gap-3"><Avatar person={person} size={44}/><div><h2 className="font-bold">{editing?"Upravit směnu":"Přidat směnu"}</h2><p className="text-xs text-slate-500">{person.name}</p></div></div><div className="mt-5 space-y-4">{owners&&!editing&&<div><label className="mb-2 block text-xs text-slate-400">Pro koho (admin)</label><select value={ownerId??""} onChange={e=>setOwnerId?.(e.target.value)} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-orange-300/45">{owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></div>}<div><label className="mb-2 block text-xs text-slate-400">{type==="vacation"?"Datum od":"Datum"}</label><input type="date" value={date} onChange={e=>{const value=e.target.value;setDate(value);if(type==="vacation"&&(!endDate||endDate<value))setEndDate(value);}} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-orange-300/45 focus:ring-2 focus:ring-orange-500/10"/></div><div><label className="mb-2 block text-xs text-slate-400">Typ směny</label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{(Object.keys(shiftInfo) as ShiftType[]).map(t=><button key={t} onClick={()=>{setType(t);if(t==="vacation"){setEndDate(endDate||date);setStart("00:00");setEnd("23:59");}else if(t==="all_day"){setStart("00:00");setEnd("23:59");}else if(t==="intershift"){setStart("10:00");setEnd("18:00");}else if(t==="midnight"){setStart("00:00");setEnd("08:00");}}} className="flex items-center gap-2 rounded-xl border p-3 text-xs font-semibold" style={type===t?{borderColor:`${shiftInfo[t].color}70`,background:`${shiftInfo[t].color}12`,color:shiftInfo[t].color}:{borderColor:"rgba(255,255,255,.06)",color:"#94a3b8"}}><Icon name={shiftInfo[t].icon} size={15}/>{shiftInfo[t].short}</button>)}</div></div>{type==="vacation"?<Input label="Datum do" type="date" value={endDate} onChange={setEndDate}/>:<div className="grid grid-cols-2 gap-3"><Input label="Od" type="time" value={start} onChange={setStart}/><Input label="Do" type="time" value={end} onChange={setEnd}/></div>}<div><label className="mb-2 block text-xs text-slate-400">Poznámka</label><textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div></div><div className="mt-6 flex gap-2">{editing&&<button onClick={onDelete} className="rounded-xl border border-red-500/20 px-4 py-3 text-xs font-semibold text-red-400">Smazat</button>}<button onClick={onClose} className="ml-auto rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-400">Zrušit</button><button onClick={onSave} disabled={saving} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(128,58,18,.22)] hover:brightness-110 disabled:opacity-50">{saving?"Ukládám…":"Uložit"}</button></div></Modal>}
 
-function EventModal({people,onClose,onSave}:{people:Person[];onClose:()=>void;onSave:(e:EventItem)=>Promise<void>}){
-  const[title,setTitle]=useState("");
-  const[date,setDate]=useState("");
-  const[time,setTime]=useState("18:00");
-  const[place,setPlace]=useState("");
-  const[description,setDescription]=useState("");
-  const[participants,setParticipants]=useState<string[]>([]);
-  const[category,setCategory]=useState<EventCategory>("sport");
+function EventModal({people,onClose,onSave,initial}:{people:Person[];onClose:()=>void;onSave:(e:EventItem)=>Promise<void>;initial?:EventItem|null}){
+  const[title,setTitle]=useState(initial?.title??"");
+  const[date,setDate]=useState(initial?.date??"");
+  const[time,setTime]=useState(initial?.time||"18:00");
+  const[place,setPlace]=useState(initial?.place??"");
+  const[description,setDescription]=useState(initial?.description??"");
+  const[participants,setParticipants]=useState<string[]>(initial?.participants??[]);
+  const[category,setCategory]=useState<EventCategory>(initial?.category??"sport");
   const[saving,setSaving]=useState(false);
 
   const submit=async()=>{
     if(!title.trim()||!date||saving)return;
     setSaving(true);
-    await onSave({id:"",title:title.trim(),date,time,place:place.trim(),description:description.trim(),participants,category});
+    await onSave({id:initial?.id??"",createdBy:initial?.createdBy,title:title.trim(),date,time,place:place.trim(),description:description.trim(),participants,category});
     setSaving(false);
   };
 
-  return <Modal onClose={onClose}><h2 className="font-bold">Nová událost</h2><div className="mt-5 space-y-4">
+  return <Modal onClose={onClose}><h2 className="font-bold">{initial?"Upravit událost":"Nová událost"}</h2><div className="mt-5 space-y-4">
     <div>
       <label className="mb-2 block text-xs text-slate-400">Kategorie</label>
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
         {(Object.keys(EVENT_CATEGORIES) as EventCategory[]).map(c=>{const cat=EVENT_CATEGORIES[c];const active=category===c;return <button type="button" key={c} onClick={()=>setCategory(c)} className="flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-[11px] font-bold transition hover:-translate-y-0.5" style={active?{borderColor:`${cat.color}80`,background:`${cat.color}1c`,color:cat.color}:{borderColor:"rgba(255,255,255,.07)",color:"#94a3b8"}}><span className="text-xl">{cat.emoji}</span>{cat.label}</button>;})}
       </div>
     </div>
-    <Input label="Název" value={title} onChange={setTitle}/><div className="grid grid-cols-2 gap-3"><ModernDateInput label="Datum" value={date} onChange={setDate}/><Input label="Čas" type="time" value={time} onChange={setTime}/></div><Input label="Místo" value={place} onChange={setPlace}/><div><label className="mb-2 block text-xs text-slate-400">Popis</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div><div><label className="mb-2 block text-xs text-slate-400">Účastníci</label><div className="flex flex-wrap gap-2">{people.map(p=><button type="button" key={p.id} onClick={()=>setParticipants(prev=>prev.includes(p.id)?prev.filter(x=>x!==p.id):[...prev,p.id])} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs" style={participants.includes(p.id)?{borderColor:`${p.color}60`,background:`${p.color}10`}:{borderColor:"rgba(255,255,255,.06)"}}><Avatar person={p} size={22}/>{p.name}</button>)}</div></div></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} disabled={saving} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs text-slate-400 disabled:opacity-50">Zrušit</button><button type="button" onClick={submit} disabled={saving||!title.trim()||!date} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(128,58,18,.22)] hover:brightness-110 disabled:opacity-50">{saving?"Vytvářím…":"Vytvořit"}</button></div></Modal>
+    <Input label="Název" value={title} onChange={setTitle}/><div className="grid grid-cols-2 gap-3"><ModernDateInput label="Datum" value={date} onChange={setDate}/><Input label="Čas" type="time" value={time} onChange={setTime}/></div><Input label="Místo" value={place} onChange={setPlace}/><div><label className="mb-2 block text-xs text-slate-400">Popis</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none"/></div><div><label className="mb-2 block text-xs text-slate-400">Účastníci</label><div className="flex flex-wrap gap-2">{people.map(p=><button type="button" key={p.id} onClick={()=>setParticipants(prev=>prev.includes(p.id)?prev.filter(x=>x!==p.id):[...prev,p.id])} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs" style={participants.includes(p.id)?{borderColor:`${p.color}60`,background:`${p.color}10`}:{borderColor:"rgba(255,255,255,.06)"}}><Avatar person={p} size={22}/>{p.name}</button>)}</div></div></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} disabled={saving} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs text-slate-400 disabled:opacity-50">Zrušit</button><button type="button" onClick={submit} disabled={saving||!title.trim()||!date} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(128,58,18,.22)] hover:brightness-110 disabled:opacity-50">{saving?(initial?"Ukládám…":"Vytvářím…"):(initial?"Uložit změny":"Vytvořit")}</button></div></Modal>
 }
 
 function PracticeModal({initialDate,onClose,onSave}:{initialDate?:string;onClose:()=>void;onSave:(p:PracticeItem)=>void}){const[date,setDate]=useState(initialDate||"");const[start,setStart]=useState("07:00");const[end,setEnd]=useState("14:00");const[note,setNote]=useState("");return <Modal onClose={onClose}><div className="flex items-center gap-2"><Icon name="briefcase"/><h2 className="font-bold">Přidat Davčův praxi</h2></div><div className="mt-5 space-y-4"><Input label="Datum" type="date" value={date} onChange={setDate}/><div className="grid grid-cols-2 gap-3"><Input label="Od" type="time" value={start} onChange={setStart}/><Input label="Do" type="time" value={end} onChange={setEnd}/></div><Input label="Poznámka" value={note} onChange={setNote}/></div><div className="mt-6 flex justify-end gap-2"><button onClick={onClose} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs text-slate-400">Zrušit</button><button onClick={()=>{if(date)onSave({id:crypto.randomUUID(),date,startTime:start,endTime:end,note})}} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white shadow-[0_8px_22px_rgba(128,58,18,.22)] hover:brightness-110">Uložit</button></div></Modal>}
@@ -2019,9 +2312,145 @@ const AutumnDecor = memo(function AutumnDecor({animations}:{animations:boolean})
   </div>;
 });
 
-function EventDetailModal({event,people,onClose}:{event:EventItem;people:Person[];onClose:()=>void}){return <Modal onClose={onClose}><div className="flex items-start justify-between gap-4"><div>{(()=>{const cat=EVENT_CATEGORIES[event.category??"other"];return <span className="mb-2 inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold" style={{borderColor:`${cat.color}45`,background:`${cat.color}14`,color:cat.color}}>{cat.emoji} {cat.label}</span>;})()}<div className="text-xs font-bold text-orange-300">{formatDate(event.date)} · {event.time}</div><h2 className="mt-2 text-2xl font-black">{event.title}</h2></div><span className="text-3xl">{EVENT_CATEGORIES[event.category??"other"].emoji}</span></div><div className="mt-6 grid gap-3 sm:grid-cols-2"><DetailBox label="Místo" value={event.place||"Bez místa"}/><DetailBox label="Čas" value={event.time||"Bez času"}/></div><div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 p-4"><div className="text-[10px] font-bold uppercase tracking-[.15em] text-slate-600">Poznámka / popis</div><div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{event.description||"Bez poznámky"}</div></div><div className="mt-5"><div className="text-xs font-bold text-slate-400">Účastníci</div><div className="mt-3 flex flex-wrap gap-2">{event.participants.length?event.participants.map(id=>{const p=people.find(x=>x.id===id);return p?<div key={id} className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs"><Avatar person={p} size={24}/>{p.name}</div>:null}):<span className="text-xs text-slate-600">Nikdo vybraný</span>}</div></div><button type="button" onClick={onClose} className="mt-6 w-full rounded-xl border border-white/[0.08] py-3 text-xs font-bold text-slate-300">Zavřít</button></Modal>}
+function EventDetailModal({event,people,onClose,onEdit}:{event:EventItem;people:Person[];onClose:()=>void;onEdit?:()=>void}){return <Modal onClose={onClose}><div className="flex items-start justify-between gap-4"><div>{(()=>{const cat=EVENT_CATEGORIES[event.category??"other"];return <span className="mb-2 inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold" style={{borderColor:`${cat.color}45`,background:`${cat.color}14`,color:cat.color}}>{cat.emoji} {cat.label}</span>;})()}<div className="text-xs font-bold text-orange-300">{formatDate(event.date)} · {event.time}</div><h2 className="mt-2 text-2xl font-black">{event.title}</h2></div><span className="text-3xl">{EVENT_CATEGORIES[event.category??"other"].emoji}</span></div><div className="mt-6 grid gap-3 sm:grid-cols-2"><DetailBox label="Místo" value={event.place||"Bez místa"}/><DetailBox label="Čas" value={event.time||"Bez času"}/></div><div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 p-4"><div className="text-[10px] font-bold uppercase tracking-[.15em] text-slate-600">Poznámka / popis</div><div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{event.description||"Bez poznámky"}</div></div><div className="mt-5"><div className="text-xs font-bold text-slate-400">Účastníci</div><div className="mt-3 flex flex-wrap gap-2">{event.participants.length?event.participants.map(id=>{const p=people.find(x=>x.id===id);return p?<div key={id} className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs"><Avatar person={p} size={24}/>{p.name}</div>:null}):<span className="text-xs text-slate-600">Nikdo vybraný</span>}</div></div><button type="button" onClick={onClose} className="mt-6 w-full rounded-xl border border-white/[0.08] py-3 text-xs font-bold text-slate-300">Zavřít</button>{onEdit&&<button type="button" onClick={onEdit} className="mt-2 w-full rounded-xl theme-primary py-3 text-xs font-bold text-white">Upravit událost</button>}</Modal>}
 function DetailBox({label,value}:{label:string;value:string}){return <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-4"><div className="text-[10px] font-bold uppercase tracking-[.15em] text-slate-600">{label}</div><div className="mt-2 text-sm font-semibold text-slate-200">{value}</div></div>}
 function ModernDateInput({label,value,onChange}:{label:string;value:string;onChange:(v:string)=>void}){return <div><label className="mb-2 block text-xs text-slate-400">{label}</label><div className="relative overflow-hidden rounded-xl border border-orange-300/15 bg-[linear-gradient(135deg,rgba(249,115,22,.07),rgba(0,0,0,.2))]"><div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-orange-300"><Icon name="calendar" size={16}/></div><input type="date" value={value} onChange={e=>onChange(e.target.value)} className="w-full bg-transparent py-3 pl-10 pr-4 text-sm outline-none [color-scheme:dark]"/></div></div>}
 
 function Modal({children,onClose}:{children:ReactNode;onClose:()=>void}){return <div className="app-modal-overlay fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-black/75 px-4 py-6 backdrop-blur-sm" style={{position:"fixed",inset:0,zIndex:9999,pointerEvents:"auto"}} onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><div className="app-modal my-auto max-h-[calc(100vh-3rem)] w-full max-w-[560px] overflow-y-auto rounded-[28px] border border-white/[0.10] bg-[linear-gradient(145deg,#101522,#090c14)] p-6 shadow-[0_30px_90px_rgba(0,0,0,.55)]" style={{pointerEvents:"auto"}} onMouseDown={e=>e.stopPropagation()}>{children}</div></div>}
 function Input({label,value,onChange,type="text"}:{label:string;value:string;onChange:(v:string)=>void;type?:string}){return <div><label className="mb-2 block text-xs text-slate-400">{label}</label><input type={type} value={value} onChange={e=>onChange(e.target.value)} className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none focus:border-orange-300/45 focus:ring-2 focus:ring-orange-500/10"/></div>}
+
+
+function InboxPage({ messages, notifications, people, currentPerson, tab, shifts, onRateShift, onSend, onMarkMessageRead, onMarkNotificationsRead, isAdmin = false, onDeleteMessage, onEditMessage }: {
+  isAdmin?: boolean; onDeleteMessage?: (id: string) => Promise<boolean>; onEditMessage?: (id: string, subject: string, body: string) => Promise<boolean>;
+  shifts: Shift[]; onRateShift: (shift: Shift, rating: number, reason: string, tramNumber: string, tramRating: TramRating | null) => Promise<boolean>;
+  messages: MessageItem[]; notifications: NotificationItem[]; people: Person[]; currentPerson: Person | null; tab: "all" | "message" | "notification";
+  onSend: (to: string[], subject: string, body: string) => Promise<boolean>; onMarkMessageRead: (id: string) => void; onMarkNotificationsRead: (ids: string[]) => void;
+}) {
+  const kind = tab === "notification" ? "notification" : "message";
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [preset, setPreset] = useState<{ to: string[]; subject: string }>({ to: [], subject: "" });
+  const [openMessage, setOpenMessage] = useState<MessageItem | null>(null);
+  const [detailShift, setDetailShift] = useState<Shift | null>(null);
+  const [ratingBusy, setRatingBusy] = useState<string | null>(null);
+  const [toast, setToast] = useState("");
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), 4000); return () => clearTimeout(t); }, [toast]);
+  const peopleById = useMemo(() => new Map(people.map(person => [person.id, person])), [people]);
+  const meId = currentPerson?.id ?? "";
+  const isReceived = (m: MessageItem) => m.recipientIds.includes(meId);
+  const names = (ids: string[]) => ids.map(id => peopleById.get(id)?.name ?? "?").join(", ");
+  const unreadMessageIds = messages.filter(m => isReceived(m) && !m.readAt).map(m => m.id);
+  const [showArchive, setShowArchive] = useState(false);
+  const [msgEdit, setMsgEdit] = useState<{ subject: string; body: string } | null>(null);
+  const activeNotifications = notifications.filter(n => !n.archived);
+  const archivedNotifications = notifications.filter(n => n.archived);
+  const rank = (n: NotificationItem) => (!n.archived && !n.read && n.important ? 0 : 1);
+  const sortedNotifications = [...activeNotifications].sort((a, b) => rank(a) - rank(b) || b.at.localeCompare(a.at));
+  const sortedArchived = [...archivedNotifications].sort((a, b) => b.at.localeCompare(a.at));
+  const unreadNotificationIds = activeNotifications.filter(n => !n.read).map(n => n.id);
+  const openCompose = (to: string[] = [], subject = "") => { setPreset({ to, subject }); setComposeOpen(true); };
+  const showMessage = (m: MessageItem) => { setOpenMessage(m); if (isReceived(m) && !m.readAt) onMarkMessageRead(m.id); };
+  const dot = <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" />;
+  const markAllBtn = (n: number, onClick: () => void) => n > 0 ? <button type="button" onClick={onClick} className="rounded-xl border border-white/[0.10] bg-white/[0.04] px-4 py-2.5 text-xs font-bold text-slate-200 hover:bg-white/[0.08]">Označit vše jako přečtené</button> : null;
+
+  const renderNotification = (n: NotificationItem) => {
+            const urgent = n.important && !n.read && !n.archived;
+            const rateShift = n.shiftId ? shifts.find(x => x.id === n.shiftId) : undefined;
+            return <div role="button" tabIndex={0} key={n.id} onClick={() => { if (!n.read) onMarkNotificationsRead([n.id]); if (rateShift) setDetailShift(rateShift); }} onKeyDown={e => { if (e.key === "Enter") { if (!n.read) onMarkNotificationsRead([n.id]); if (rateShift) setDetailShift(rateShift); } }} className={`flex w-full cursor-pointer items-start gap-3 rounded-2xl border p-4 text-left transition hover:bg-white/[0.04] ${n.archived ? "border-white/[0.05] bg-black/10 opacity-70" : urgent ? "border-red-400/40 bg-red-500/[0.08]" : n.read ? "border-white/[0.05] bg-black/10" : "border-orange-300/25 bg-orange-400/[0.06]"}`}>
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${urgent ? "border-red-400/40 bg-red-500/10 text-red-300" : "theme-soft"}`}><Icon name={n.icon} size={18} /></div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-bold">{n.title}</span>{n.important && !n.archived && <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-red-300">Důležité</span>}{!n.read && !n.archived && dot}</div>
+                <div className="mt-1 text-sm text-slate-300">{n.text}</div>
+                <div className="mt-1.5 text-[11px] text-slate-500">{whenLabel(n.at, n.showTime)}</div>
+                {!n.archived && (rateShift || n.test) && <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  {[0, 1, 2, 3, 4, 5].map(v => <button type="button" key={v} disabled={ratingBusy === n.id} onClick={async e => { e.stopPropagation(); if (!rateShift) { onMarkNotificationsRead([n.id]); setToast("Díky! Tohle byla jen zkouška, nic se neuložilo."); return; } setRatingBusy(n.id); await onRateShift(rateShift, v, "", rateShift.tramNumber ?? "", rateShift.tramRating); setRatingBusy(null); }} className="rounded-lg border border-amber-300/30 bg-amber-400/10 px-2.5 py-1.5 text-xs font-bold text-amber-200 transition hover:bg-amber-400/25 disabled:opacity-50">{v === 0 ? "0★" : "★".repeat(v)}</button>)}
+                  {rateShift && <span className="ml-1 text-[11px] text-slate-500">nebo klepni na kartu a napiš proč</span>}
+                </div>}
+              </div>
+            </div>;
+  };
+
+  return <div>
+    <PageHeader eyebrow="SCHRÁNKA" title={kind === "message" ? "Zprávy" : "Oznámení"} description={kind === "message" ? "Posílej zprávy ostatním členům Směnovníku." : "Co se nového stalo a na co nezapomenout."}
+      action={kind === "message"
+        ? <div className="flex flex-wrap gap-2">{markAllBtn(unreadMessageIds.length, () => unreadMessageIds.forEach(onMarkMessageRead))}<button type="button" onClick={() => openCompose()} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white hover:brightness-110"><Icon name="plus" size={16} />Nová zpráva</button></div>
+        : markAllBtn(unreadNotificationIds.length, () => onMarkNotificationsRead(unreadNotificationIds)) ?? undefined} />
+    {toast && <div className="mb-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.06] px-4 py-3 text-sm font-semibold text-emerald-200">{toast}</div>}
+    <Card className="p-3 sm:p-4">
+      <div className="space-y-2">
+        {kind === "message"
+          ? (messages.length === 0 ? <Empty text="Zatím žádné zprávy. Napiš první přes „Nová zpráva“." /> : messages.map(m => {
+            const received = isReceived(m);
+            const sender = peopleById.get(m.senderId);
+            const unread = received && !m.readAt;
+            return <button type="button" key={m.id} onClick={() => showMessage(m)} className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition hover:bg-white/[0.04] ${unread ? "border-orange-300/25 bg-orange-400/[0.06]" : "border-white/[0.05] bg-black/10"}`}>
+              {sender ? <Avatar person={sender} size={40} /> : <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.06]"><Icon name="mail" size={18} /></div>}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2"><span className="truncate text-sm font-bold">{received ? (sender?.name ?? "Neznámý") : m.senderId === meId ? `Ty → ${names(m.recipientIds)}` : `${sender?.name ?? "Neznámý"} → ${names(m.recipientIds)}`}</span>{unread && dot}<span className="ml-auto shrink-0 text-[11px] text-slate-500">{whenLabel(m.at)}</span></div>
+                <div className={`mt-0.5 truncate text-sm ${unread ? "font-black text-white" : "font-semibold text-slate-200"}`}>{m.subject}</div>
+                <div className="mt-0.5 truncate text-xs text-slate-400">{m.body}</div>
+              </div>
+            </button>;
+          }))
+          : <>
+            {activeNotifications.length === 0 ? <Empty text={archivedNotifications.length > 0 ? "Žádná aktuální oznámení." : "Zatím žádná oznámení."} /> : sortedNotifications.map(renderNotification)}
+            {sortedArchived.length > 0 && <div className="pt-4">
+              <button type="button" onClick={() => setShowArchive(v => !v)} className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[.16em] text-slate-500 transition hover:text-slate-300">Proběhlé<span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px]">{sortedArchived.length}</span><span className="text-[10px]">{showArchive ? "▲ skrýt" : "▼ zobrazit"}</span></button>
+              {showArchive && <div className="space-y-2">{sortedArchived.map(renderNotification)}</div>}
+            </div>}
+          </>}
+      </div>
+    </Card>
+    {detailShift && <ShiftDetailModal shift={detailShift} person={peopleById.get(detailShift.userId) || null} editable onClose={() => setDetailShift(null)} onEdit={() => setDetailShift(null)} onSaveRating={onRateShift} />}
+    {composeOpen && <ComposeModal people={people} currentPerson={currentPerson} preset={preset} onClose={() => setComposeOpen(false)} onSend={onSend} />}
+    {openMessage && (() => {
+      const m = openMessage;
+      const sender = peopleById.get(m.senderId);
+      return <Modal onClose={() => { setOpenMessage(null); setMsgEdit(null); }}>
+        <div className="flex items-start gap-3">
+          {sender && <Avatar person={sender} size={46} />}
+          <div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-[.16em] text-orange-300/70">Zpráva</div>{msgEdit ? <input value={msgEdit.subject} onChange={e => setMsgEdit({ ...msgEdit, subject: e.target.value })} className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2 text-lg font-black outline-none focus:border-orange-300/40" /> : <h2 className="mt-1 break-words text-xl font-black">{m.subject}</h2>}<p className="mt-1 text-xs text-slate-500">Od: {sender?.name ?? "Neznámý"} · {whenLabel(m.at)}</p></div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-400"><span>Komu:</span>{m.recipientIds.map(id => { const person = peopleById.get(id); return person ? <span key={id} className="flex items-center gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.025] px-2.5 py-1.5"><Avatar person={person} size={20} />{person.name}</span> : null; })}</div>
+        {msgEdit ? <textarea value={msgEdit.body} onChange={e => setMsgEdit({ ...msgEdit, body: e.target.value })} rows={6} className="mt-4 w-full rounded-2xl border border-white/[0.08] bg-black/20 p-4 text-sm leading-6 outline-none focus:border-orange-300/40" /> : <div className="mt-4 whitespace-pre-wrap break-words rounded-2xl border border-white/[0.07] bg-black/20 p-4 text-sm leading-6 text-slate-200">{m.body}</div>}
+        <div className="mt-6 flex justify-end gap-2">
+          {isAdmin && !msgEdit && <button type="button" onClick={async () => { if (!confirm("Opravdu smazat tuto zprávu všem?")) return; if (await onDeleteMessage?.(m.id)) setOpenMessage(null); }} className="mr-auto rounded-xl border border-red-400/30 px-4 py-3 text-xs font-semibold text-red-300 hover:bg-red-500/10">Smazat</button>}
+          {isAdmin && !msgEdit && <button type="button" onClick={() => setMsgEdit({ subject: m.subject, body: m.body })} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-200 hover:bg-white/[0.04]">Upravit</button>}
+          {msgEdit && <button type="button" onClick={async () => { if (!msgEdit.subject.trim() || !msgEdit.body.trim()) return; if (await onEditMessage?.(m.id, msgEdit.subject.trim(), msgEdit.body.trim())) { setOpenMessage({ ...m, subject: msgEdit.subject.trim(), body: msgEdit.body.trim() }); setMsgEdit(null); } }} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white hover:brightness-110">Uložit změny</button>}
+          <button type="button" onClick={() => { if (msgEdit) setMsgEdit(null); else setOpenMessage(null); }} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-white/[0.04]">{msgEdit ? "Zrušit" : "Zavřít"}</button>
+          {isReceived(m) && <button type="button" onClick={() => { setOpenMessage(null); openCompose([m.senderId], m.subject.startsWith("Re: ") ? m.subject : `Re: ${m.subject}`); }} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white hover:brightness-110">Odpovědět</button>}
+        </div>
+      </Modal>;
+    })()}
+  </div>;
+}
+
+function ComposeModal({ people, currentPerson, preset, onClose, onSend }: { people: Person[]; currentPerson: Person | null; preset: { to: string[]; subject: string }; onClose: () => void; onSend: (to: string[], subject: string, body: string) => Promise<boolean> }) {
+  const others = people.filter(person => person.id !== currentPerson?.id);
+  const [to, setTo] = useState<string[]>(preset.to);
+  const [subject, setSubject] = useState(preset.subject);
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const allSelected = others.length > 0 && others.every(person => to.includes(person.id));
+  const submit = async () => {
+    if (to.length === 0 || !body.trim() || sending) return;
+    setSending(true);
+    const ok = await onSend(to, subject.trim(), body.trim());
+    setSending(false);
+    if (ok) onClose();
+  };
+  return <Modal onClose={onClose}>
+    <h2 className="font-bold">Nová zpráva</h2>
+    <div className="mt-5 space-y-4">
+      <div>
+        <div className="mb-2 flex items-center justify-between"><label className="text-xs text-slate-400">Komu</label><button type="button" onClick={() => setTo(allSelected ? [] : others.map(person => person.id))} className="text-[11px] font-semibold text-orange-300 hover:text-orange-200">{allSelected ? "Zrušit výběr" : "Vybrat všechny"}</button></div>
+        <div className="flex flex-wrap gap-2">{others.map(person => <button type="button" key={person.id} onClick={() => setTo(prev => prev.includes(person.id) ? prev.filter(x => x !== person.id) : [...prev, person.id])} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs" style={to.includes(person.id) ? { borderColor: `${person.color}80`, background: `${person.color}1c` } : { borderColor: "rgba(255,255,255,.06)" }}><Avatar person={person} size={22} />{person.name}</button>)}</div>
+      </div>
+      <Input label="Předmět" value={subject} onChange={setSubject} />
+      <div><label className="mb-2 block text-xs text-slate-400">Zpráva</label><textarea value={body} onChange={e => setBody(e.target.value)} rows={6} placeholder="Napiš zprávu…" className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none" /></div>
+    </div>
+    <div className="mt-6 flex justify-end gap-2">
+      <button type="button" onClick={onClose} disabled={sending} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs text-slate-400 disabled:opacity-50">Zrušit</button>
+      <button type="button" onClick={submit} disabled={sending || to.length === 0 || !body.trim()} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white hover:brightness-110 disabled:opacity-50">{sending ? "Odesílám…" : "Odeslat"}</button>
+    </div>
+  </Modal>;
+}
