@@ -1,11 +1,12 @@
 "use client";
 
-import { memo, useEffect, useMemo, useState, createContext, useContext, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, createContext, useContext, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
 
 type ShiftType = "morning" | "afternoon" | "intershift" | "night" | "midnight" | "all_day" | "emergency" | "vacation" | "sick";
 type TramRating = "mrdka" | "usla" | "topka";
-type Page = "overview" | "shifts" | "events" | "stats" | "updates" | "settings" | "inbox";
+type Page = "overview" | "shifts" | "events" | "stats" | "updates" | "settings" | "inbox" | "reviews";
 type AuthSession = { user?: { email?: string | null } } | null;
 type EventCategory = "sport" | "trip" | "party" | "food" | "family" | "school" | "other";
 
@@ -109,6 +110,8 @@ const UPDATE_ITEMS_22 = [
   "Důležitá oznámení jsou zvýrazněná, jde je hromadně označit jako přečtená a starší padají do sekce Proběhlé.",
   "Směny lze po skončení hodnotit 0–5 hvězdičkami i s důvodem. Hodnocení se otevře 5 minut po konci směny.",
   "Hodnocení směny stačí klepnout rovnou v oznámení; kdo chce, může ke hvězdičkám připsat vysvětlení.",
+  "Po Směnovníku se prochází pixelová kočička: chvíli chodí, pak si sedne, kouká a mrká. Pokud ti vadí, vypni animace v Nastavení.",
+  "Vedle zpráv je nová ikona hvězdy: stránka Recenze se všemi chybějícími hodnoceními směn a přehledem těch ohodnocených včetně průměru.",
   "U Matýska je navíc hodnocení tramvaje: číslo vozu a verdikt Mrdka, Ušla nebo Topka.",
   "Narozeniny: v Nastavení si uložíš datum narození, ostatní ho uvidí v kalendáři a v ten den se ukáže i věk.",
   "Události mají kategorie (Sport, Výlet, Párty, Jídlo, Rodina, Škola, Jiné) s filtrem, měsíčním členěním a sekcí Proběhlé.",
@@ -211,6 +214,7 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
     check: <svg {...common}><path d="m5 12 4 4L19 6"/></svg>,
     mail: <svg {...common}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>,
     bell: <svg {...common}><path d="M6 9a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>,
+    star: <svg {...common}><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3Z"/></svg>,
   };
   return <span style={{ width: size, height: size, display: "inline-flex", flexShrink: 0 }}>{icons[name] ?? icons.info}</span>;
 }
@@ -463,15 +467,16 @@ function whenLabel(iso: string, showTime = true) {
   return sameDay ? `dnes ${time}` : `${d.getDate()}. ${d.getMonth() + 1}. ${time}`;
 }
 
-type InboxCtxValue = { unreadMessages: number; unreadNotifications: number; openInbox: (tab: "all" | "message" | "notification") => void };
-const InboxCtx = createContext<InboxCtxValue>({ unreadMessages: 0, unreadNotifications: 0, openInbox: () => {} });
+type InboxCtxValue = { unreadMessages: number; unreadNotifications: number; pendingReviews: number; openInbox: (tab: "all" | "message" | "notification") => void; openReviews: () => void };
+const InboxCtx = createContext<InboxCtxValue>({ unreadMessages: 0, unreadNotifications: 0, pendingReviews: 0, openInbox: () => {}, openReviews: () => {} });
 
 function HeaderActions() {
-  const { unreadMessages, unreadNotifications, openInbox } = useContext(InboxCtx);
+  const { unreadMessages, unreadNotifications, pendingReviews, openInbox, openReviews } = useContext(InboxCtx);
   const btn = "relative flex h-10 w-10 items-center justify-center rounded-xl border border-orange-300/15 bg-black/20 text-slate-300 transition hover:border-orange-300/40 hover:text-orange-200";
   const badge = (n: number) => n > 0 ? <span className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white">{n > 9 ? "9+" : n}</span> : null;
   return <div className="flex items-center gap-2">
     <button type="button" aria-label="Zprávy" title="Zprávy" onClick={() => openInbox("message")} className={btn}><Icon name="mail" size={19} />{badge(unreadMessages)}</button>
+    <button type="button" aria-label="Recenze směn" title="Recenze směn" onClick={openReviews} className={btn}><Icon name="star" size={19} />{badge(pendingReviews)}</button>
     <button type="button" aria-label="Oznámení" title="Oznámení" onClick={() => openInbox("notification")} className={btn}><Icon name="bell" size={19} />{badge(unreadNotifications)}</button>
   </div>;
 }
@@ -768,7 +773,20 @@ export default function Home() {
     }
   };
 
+  // Moje odpracované směny, které ještě nemají hodnocení (hodnotit lze 5 minut po konci směny)
+  const pendingReviews = useMemo(() => {
+    if (!currentPerson) return 0;
+    const nowMs = Date.now();
+    return shifts.filter(sh => {
+      if (sh.userId !== currentPerson.id || sh.rating !== null) return false;
+      const avail = shiftRatingAvailableAt(sh);
+      return avail !== null && nowMs >= avail.getTime();
+    }).length;
+  }, [shifts, currentPerson, minuteTick]);
+
   const inboxCtx: InboxCtxValue = {
+    pendingReviews,
+    openReviews: () => setActivePage("reviews"),
     unreadMessages: currentPerson ? messages.filter(m => m.recipientIds.includes(currentPerson.id) && !m.readAt).length : 0,
     unreadNotifications: notifications.filter(n => !n.read && !n.archived).length,
     openInbox: (tab) => { setInboxTab(tab); setActivePage("inbox"); },
@@ -1337,6 +1355,7 @@ export default function Home() {
           {activePage === "events" && <EventsPage events={events} people={members} currentPerson={currentPerson} openCreate={()=>{setEditingEvent(null);setShowEventModal(true);}} deleteEvent={deleteEvent} onEditEvent={(e:EventItem)=>{setEditingEvent(e);setShowEventModal(true);}} />}
           {activePage === "updates" && <UpdatesPage />}
           {activePage === "inbox" && <InboxPage messages={messages} notifications={notifications} people={people} currentPerson={currentPerson} tab={inboxTab} shifts={shifts} onRateShift={saveShiftRating} onSend={sendMessage} onMarkMessageRead={markMessageRead} onMarkNotificationsRead={markNotificationsRead} isAdmin={isAdmin} onDeleteMessage={deleteMessage} onEditMessage={editMessage} />}
+          {activePage === "reviews" && <ReviewsPage shifts={shifts} people={people} currentPerson={currentPerson} onRateShift={saveShiftRating} />}
           {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} statsView={statsView} setStatsView={setStatsView} statsMonthKey={statsMonthKey} setStatsMonthKey={setStatsMonthKey} statsWeekStart={statsWeekStart} setStatsWeekStart={setStatsWeekStart} statsPeriod={statsPeriod} />}
           {activePage === "settings" && <SettingsPage members={members} currentPerson={currentPerson} setPeople={setPeople} themeColor={themeColor} setThemeColor={setThemeColor} themeColor2={themeColor2} setThemeColor2={setThemeColor2} themeMode={themeMode} setThemeMode={setThemeMode} animationsEnabled={animationsEnabled} setAnimationsEnabled={setAnimationsEnabled} /> }
         </div>
@@ -1346,6 +1365,7 @@ export default function Home() {
     {showShiftModal && currentPerson && <ShiftModal person={people.find(p => p.id === (editingShift?.userId ?? shiftOwnerId)) ?? currentPerson} owners={isAdmin ? members : undefined} ownerId={shiftOwnerId} setOwnerId={setShiftOwnerId} editing={editingShift} date={shiftDate} setDate={setShiftDate} endDate={shiftEndDate} setEndDate={setShiftEndDate} type={shiftType} setType={setShiftType} start={startTime} setStart={setStartTime} end={endTime} setEnd={setEndTime} note={note} setNote={setNote} saving={savingShift} onClose={()=>setShowShiftModal(false)} onSave={saveShift} onDelete={deleteShift} />}
     {showEventModal && <EventModal people={members} initial={editingEvent} onClose={()=>{setShowEventModal(false);setEditingEvent(null);}} onSave={saveEvent} />}
     {showPracticeModal && (currentPerson?.email === "dkudlata9@gmail.com" || isAdmin) && <PracticeModal initialDate={practicePresetDate} onClose={()=>setShowPracticeModal(false)} onSave={savePractice} />}
+    <WalkingCat enabled={animationsEnabled && !!currentPerson} animal={pixelAnimalFor(currentPerson?.email)} />
     {showUpdateIntro && currentPerson && <UpdateIntroModal onDone={()=>{localStorage.setItem(`smenovnik-${APP_VERSION}-read-${currentPerson.email}`, "yes");setShowUpdateIntro(false);}} />}
     {showShiftSuccess && <ShiftSavedToast animations={animationsEnabled} />}
   </main></InboxCtx.Provider>;
@@ -2271,6 +2291,64 @@ function DavidPracticeSchedule({practice,canEdit,onAdd,onDelete}:{practice:Pract
   return <div className="relative overflow-hidden rounded-3xl border border-[#5a4637]/55 bg-[linear-gradient(145deg,rgba(30,24,20,.97),rgba(15,13,12,.98))] p-5 shadow-[0_18px_50px_rgba(0,0,0,.28)] sm:p-6"><div className="pointer-events-none absolute -right-16 -top-14 text-7xl opacity-[0.05]">🍂</div><div className="relative mb-5 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#6e5a49]/40 bg-[#2b241f] text-[#c9b7a7]"><Icon name="briefcase"/></div><div><h3 className="font-bold text-[#f1e7dc]">Davčův lichý týden – praxe</h3><p className="text-xs text-[#9f8d7e]">Klikni na den od pondělí do soboty a nastav čas od–do.</p></div></div><div className="relative grid gap-3 md:grid-cols-3 xl:grid-cols-6">{days.map(({day,date})=>{const item=practice.find(p=>p.date===date);return <button key={date} type="button" disabled={!canEdit} onClick={()=>onAdd(date)} className="min-h-[140px] rounded-2xl border border-[#6e5a49]/40 bg-[linear-gradient(145deg,rgba(53,43,35,.88),rgba(29,25,22,.94))] p-4 text-left transition hover:-translate-y-1 hover:border-[#8b735e]/65 hover:bg-[linear-gradient(145deg,rgba(63,51,41,.94),rgba(35,30,25,.96))] disabled:cursor-default"><div className="text-xs font-black text-[#d8c8b9]">{day}</div><div className="mt-1 text-[11px] text-[#7f7064]">{new Date(`${date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})}</div>{item?<><div className="mt-5 text-lg font-black text-[#f4ece4]">{item.startTime}–{item.endTime}</div><div className="mt-2 line-clamp-2 text-xs text-[#a89687]">{item.note||"Praxe"}</div>{canEdit&&<span onClick={e=>{e.stopPropagation();onDelete(item.id)}} className="mt-3 inline-block text-[10px] text-red-400">Smazat</span>}</>:<><div className="mt-5 text-2xl text-[#8f7d6f] opacity-60">＋</div><div className="mt-2 text-xs text-[#8f7d6f]">{canEdit?"Nastavit praxi":"Bez zapsané praxe"}</div></>}</button>})}</div></div>
 }
 
+function ReviewsPage({ shifts, people, currentPerson, onRateShift }: { shifts: Shift[]; people: Person[]; currentPerson: Person | null; onRateShift: (shift: Shift, rating: number, reason: string, tramNumber: string, tramRating: TramRating | null) => Promise<boolean> }) {
+  const [detailShift, setDetailShift] = useState<Shift | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [toast, setToast] = useState("");
+  const [showAllRated, setShowAllRated] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const i = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(i); }, []);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), 3500); return () => clearTimeout(t); }, [toast]);
+
+  const mine = useMemo(() => currentPerson ? shifts.filter(s => s.userId === currentPerson.id && shiftRatingAvailableAt(s) !== null) : [], [shifts, currentPerson]);
+  const byNewest = (a: Shift, b: Shift) => shiftStartAt(b).getTime() - shiftStartAt(a).getTime();
+  const missing = useMemo(() => mine.filter(s => s.rating === null && now >= shiftRatingAvailableAt(s)!.getTime()).sort(byNewest), [mine, now]);
+  const rated = useMemo(() => mine.filter(s => s.rating !== null).sort(byNewest), [mine]);
+  const average = rated.length > 0 ? rated.reduce((sum, s) => sum + (s.rating ?? 0), 0) / rated.length : null;
+  const visibleRated = showAllRated ? rated : rated.slice(0, 10);
+  const person = currentPerson;
+
+  const rowHead = (s: Shift) => {
+    const info = shiftInfo[s.type];
+    return <div className="flex min-w-0 items-center gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border" style={{ borderColor: `${info.color}40`, background: `${info.color}14`, color: info.color }}><Icon name={info.icon} size={18} /></div>
+      <div className="min-w-0"><div className="truncate text-sm font-bold">{info.label}</div><div className="text-[11px] text-slate-500">{formatDate(s.date)} · {shiftTimeLabel(s)}</div></div>
+    </div>;
+  };
+
+  return <div>
+    <PageHeader eyebrow="SMĚNY" title="Recenze" description="Ohodnoť své odpracované směny. Tady najdeš ty, které ti ještě chybí." />
+    {toast && <div className="mb-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.06] px-4 py-3 text-sm font-semibold text-emerald-200">{toast}</div>}
+
+    <Card className="p-3 sm:p-4">
+      <div className="mb-3 flex items-center gap-2 px-1 text-xs font-black uppercase tracking-[.16em] text-amber-300/80">Čeká na ohodnocení<span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] text-amber-200">{missing.length}</span></div>
+      {missing.length === 0
+        ? <Empty text="Všechno ohodnoceno. Chybějící recenze tu nemáš žádné. ⭐" />
+        : <div className="space-y-2">{missing.map(s => <div key={s.id} role="button" tabIndex={0} onClick={() => setDetailShift(s)} onKeyDown={e => { if (e.key === "Enter") setDetailShift(s); }} className="cursor-pointer rounded-2xl border border-amber-300/20 bg-amber-400/[0.05] p-4 transition hover:bg-amber-400/[0.09]">
+          {rowHead(s)}
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            {[0, 1, 2, 3, 4, 5].map(v => <button type="button" key={v} disabled={busy === s.id} onClick={async e => { e.stopPropagation(); setBusy(s.id); const ok = await onRateShift(s, v, "", s.tramNumber ?? "", s.tramRating); setBusy(null); if (ok) setToast("Hodnocení uloženo, díky!"); }} className="rounded-lg border border-amber-300/30 bg-amber-400/10 px-2.5 py-1.5 text-xs font-bold text-amber-200 transition hover:bg-amber-400/25 disabled:opacity-50">{v === 0 ? "0★" : "★".repeat(v)}</button>)}
+            <span className="ml-1 text-[11px] text-slate-500">nebo klepni na kartu a napiš proč</span>
+          </div>
+        </div>)}</div>}
+    </Card>
+
+    <Card className="mt-5 p-3 sm:p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2 px-1 text-xs font-black uppercase tracking-[.16em] text-slate-500">Ohodnocené<span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px]">{rated.length}</span>{average !== null && <span className="ml-auto text-[11px] normal-case tracking-normal text-amber-300">průměr {average.toFixed(1).replace(".", ",")} / 5 ★</span>}</div>
+      {rated.length === 0
+        ? <Empty text="Zatím žádná ohodnocená směna." />
+        : <div className="space-y-2">{visibleRated.map(s => <button type="button" key={s.id} onClick={() => setDetailShift(s)} className="flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.05] bg-black/10 p-4 text-left transition hover:bg-white/[0.04]">
+          {rowHead(s)}
+          <div className="text-right"><div className="text-base tracking-wider text-amber-300">{"★".repeat(s.rating ?? 0)}{"☆".repeat(5 - (s.rating ?? 0))}</div>{s.ratingReason && <div className="mt-0.5 max-w-[240px] truncate text-[11px] text-slate-500">{s.ratingReason}</div>}</div>
+        </button>)}
+          {rated.length > 10 && <button type="button" onClick={() => setShowAllRated(v => !v)} className="w-full rounded-xl border border-white/[0.08] py-2.5 text-xs font-semibold text-slate-400 hover:bg-white/[0.04]">{showAllRated ? "Zobrazit méně" : `Zobrazit všech ${rated.length}`}</button>}
+        </div>}
+    </Card>
+
+    {detailShift && <ShiftDetailModal shift={detailShift} person={person ? (people.find(x => x.id === detailShift.userId) ?? person) : null} editable onClose={() => setDetailShift(null)} onEdit={() => setDetailShift(null)} onSaveRating={onRateShift} />}
+  </div>;
+}
+
 function UpdatesPage(){
   const UpdateList=({items}:{items:readonly string[]})=><div className="mt-5 space-y-3">{items.map((item,index)=><div key={item} className="flex gap-3 rounded-2xl border border-white/[0.06] bg-black/15 p-4"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-400/10 text-orange-300"><Icon name="check" size={15}/></div><div><div className="text-[10px] font-bold uppercase tracking-[.14em] text-slate-600">Změna {index+1}</div><div className="mt-1 text-sm text-slate-300">{item}</div></div></div>)}</div>;
   return <div>
@@ -2298,6 +2376,281 @@ function UpdatesPage(){
 }
 
 function UpdateIntroModal({onDone}:{onDone:()=>void}){return <Modal onClose={()=>{}}><div className="text-center"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-400/10 text-3xl">🍂</div><div className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-orange-300">Směnovník {APP_VERSION}</div><h2 className="mt-2 text-2xl font-black">Vítej v aktualizaci {APP_VERSION}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Přidali jsme zprávy a oznámení, hodnocení směn, narozeniny a lepší události.</p></div><div className="mt-6 max-h-[42vh] space-y-2 overflow-y-auto pr-1">{UPDATE_ITEMS_22.map(item=><div key={item} className="flex gap-3 rounded-xl bg-white/[0.025] p-3"><span className="text-orange-300">✓</span><span className="text-sm text-slate-300">{item}</span></div>)}</div><button type="button" onClick={onDone} className="mt-6 w-full rounded-2xl theme-primary py-3.5 text-sm font-black text-white">Super, přečetl jsem si to</button></Modal>}
+
+// Pixelová zvířátka, která občas přeběhnou (nebo přeletí) po obrazovce – každý člen má svoje.
+// Mřížky „kostiček“; písmena odkazují do palety daného zvířete. Všechna zvířata hledí doprava (při chůzi doleva se zrcadlí).
+type PixelAnimalKey = "cat_orange" | "cat_black" | "dog_black" | "dog_brown" | "parrot";
+type PixelAnimal = {
+  colors: Record<string, string>;
+  fly: boolean;
+  body: string[];            // 24×14 – chůze nebo let (tělo)
+  bodyEyes?: [number, number][];  // oči nakreslené navíc přes tělo
+  legsA?: string[]; legsB?: string[];   // chůze: dvě fáze nožiček (od řádku 11)
+  wingUp?: string[]; wingDown?: string[]; // let: dvě fáze křídel
+  eyeColor: string;
+  sit: string[];             // 14×14 – sedí
+  sitEyes: [number, number][];
+};
+
+const CAT_BODY = [
+  ".................O....O.",
+  ".................O....O.",
+  ".O...............OOOOOO.",
+  ".O...............OOWWOO.",
+  ".O...............OEWWEO.",
+  ".oO..............WWPPWW.",
+  "..oOOOoOoOOWWWWWWBBBBBB.",
+  "...OOoOoOOWWWWWWWWWSS...",
+  "...OOOOWWWWWWWWWWWWWWW..",
+  "....WWWWWWWWWWWWWWWWWW..",
+  ".....WWWWWWWWWWWWWWW....",
+];
+const CAT_LEGS_A = [
+  ".....WW..WW...WW.WW.....",
+  ".....WW..WW...WW.WW.....",
+  ".....WW..........WW.....",
+];
+const CAT_LEGS_B = [
+  ".....WW..WW...WW.WW.....",
+  ".....WW..WW...WW.WW.....",
+  ".........WW...WW........",
+];
+const CAT_SIT = [
+  "..............",
+  "...O......O...",
+  "...OOOOOOOO...",
+  "...OOOWWOOO...",
+  "...OOOWWOOO...",
+  "...WWWWWWWW...",
+  "...WWWPPWWW...",
+  "....BBBBBB....",
+  "...WWWSSWWW...",
+  "..OOWWWWWWWW..",
+  "..OOWWWWWWWWO.",
+  "..OOWWWWWWWWOO",
+  "..WWWWWWWWWW.O",
+  "...WWW..WWW...",
+];
+const DOG_BODY = [
+  "................D...D...",
+  "...............DD..DD...",
+  ".D.............DDDDDDD..",
+  ".D.............DbDDDDb..",
+  "DD.............DDMMMMMN.",
+  ".DD.DDDDDDDDDDDDDDDDMMM.",
+  "..DDDDDDDDDDDDDDDCCCCC..",
+  "..DDDDDDDDDDDDDDDWWWWW..",
+  "...DDDDDDDDDDDDDWWWWWW..",
+  "...DDDDDDDDDDDDDWWWWW...",
+  "....DDDDDDDDDDDDDDD.....",
+];
+const DOG_LEGS_A = [
+  ".....DD..DD....DD.DD....",
+  ".....DD..DD....DD.DD....",
+  ".....WW...........WW....",
+];
+const DOG_LEGS_B = [
+  ".....DD..DD....DD.DD....",
+  ".....DD..DD....DD.DD....",
+  ".........WW....WW.......",
+];
+const DOG_SIT = [
+  "...D......D...",
+  "...DD....DD...",
+  "...DDDDDDDD...",
+  "...DbDDDDbD...",
+  "...DDMMMMDD...",
+  "...DDMNNMDD...",
+  "....CCCCCC....",
+  "...DDWWWWDD...",
+  "..DDDWWWWDDD..",
+  "..DDDWWWWDDDD.",
+  "..DDDWWWWDDD.D",
+  "..DDDWWWWDDDDD",
+  "..DDDWWWWDDD..",
+  "..WWWWWWWWWW..",
+];
+const BIRD_BODY = [
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "...............RRRRR....",
+  "..............RRRRRRKK..",
+  "..........RRRRRRbbRRK...",
+  ".....rRRRRRRRRRRbbRK....",
+  "....rrRRRRRRRRRRRR......",
+  ".....BrrRRRRRRRRR.......",
+  "......BBBrRRRRR.........",
+  ".........BBB.FF.........",
+  "..........BB............",
+  "..........B.............",
+];
+const BIRD_WING_UP = [
+  "........................",
+  "..........bb............",
+  ".........bBB............",
+  "........bBBBb...........",
+  ".......bBBBBBb..........",
+  "........BBBBBB..........",
+];
+const BIRD_WING_DOWN = [
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........rBBBBBBb........",
+  "........BBBBBBBB........",
+  ".........BBBBBBb........",
+  "..........bBBBB.........",
+  "...........bbb..........",
+];
+const BIRD_SIT = [
+  "..............",
+  "....RRRRRR....",
+  "...RRRRRRRR...",
+  "...RRRRRRRR...",
+  "...RbRRRRbR...",
+  "...RbbKKbbR...",
+  "....bbKKbb....",
+  "...RRRKKRRR...",
+  "..BRRRRRRRRB..",
+  ".BBRRrRRrRRBB.",
+  ".BBRRRRRRRRBB.",
+  ".BBRrRRRRrRBB.",
+  "..BBRRRRRRBB..",
+  "....FF..FF....",
+];
+
+const PIXEL_ANIMALS: Record<PixelAnimalKey, PixelAnimal> = {
+  cat_orange: { colors: {"W": "#fffaf2", "O": "#e8923a", "o": "#c9712a", "B": "#1e2a44", "S": "#c9ced6", "E": "#2b1b10", "P": "#f4a6b0"}, fly: false, body: CAT_BODY, legsA: CAT_LEGS_A, legsB: CAT_LEGS_B, eyeColor: "#2b1b10", sit: CAT_SIT, sitEyes: [[4, 4], [9, 4]] },
+  cat_black: { colors: {"W": "#2a2a31", "O": "#17171c", "o": "#222228", "B": "#b8344a", "S": "#e6c14a", "E": "#f2d03b", "P": "#7a4a58"}, fly: false, body: CAT_BODY, legsA: CAT_LEGS_A, legsB: CAT_LEGS_B, eyeColor: "#f2d03b", sit: CAT_SIT, sitEyes: [[4, 4], [9, 4]] },
+  dog_black: { colors: {"D": "#1e1b1f", "b": "#b98a55", "M": "#b98a55", "N": "#0b0b0b", "C": "#c0392b", "W": "#efe8dc", "E": "#f1e4c8"}, fly: false, body: DOG_BODY, bodyEyes: [[18, 3], [21, 3]], legsA: DOG_LEGS_A, legsB: DOG_LEGS_B, eyeColor: "#f1e4c8", sit: DOG_SIT, sitEyes: [[5, 3], [8, 3]] },
+  dog_brown: { colors: {"D": "#8a5a3c", "b": "#6e452b", "M": "#a8714c", "N": "#2a1a12", "C": "#d6e23a", "W": "#8a5a3c", "E": "#1a0f08"}, fly: false, body: DOG_BODY, bodyEyes: [[18, 3], [21, 3]], legsA: DOG_LEGS_A, legsB: DOG_LEGS_B, eyeColor: "#1a0f08", sit: DOG_SIT, sitEyes: [[5, 3], [8, 3]] },
+  parrot: { colors: {"R": "#d4202c", "r": "#a8141f", "B": "#2f56c9", "b": "#6d94ee", "K": "#ece6d8", "F": "#a89f93", "E": "#14110f"}, fly: true, body: BIRD_BODY, bodyEyes: [[17, 5]], wingUp: BIRD_WING_UP, wingDown: BIRD_WING_DOWN, eyeColor: "#14110f", sit: BIRD_SIT, sitEyes: [[4, 3], [9, 3]] },
+};
+
+// Kdo má které zvíře (podle e-mailu přihlášeného člena). Ostatní (např. Admin) dostanou oranžovou kočku.
+const PIXEL_ANIMAL_BY_EMAIL: Record<string, PixelAnimalKey> = {
+  "jakub.proch145@seznam.cz": "cat_orange",
+  "lucieannapilarova97@gmail.com": "cat_black",
+  "dkudlata9@gmail.com": "dog_black",
+  "08matytibi3115@gmail.com": "dog_brown",
+  "matejuher15@gmail.com": "parrot",
+};
+function pixelAnimalFor(email?: string | null): PixelAnimalKey {
+  return PIXEL_ANIMAL_BY_EMAIL[(email || "").toLowerCase()] ?? "cat_orange";
+}
+
+function pixelRects(rows: string[], y0: number, colors: Record<string, string>) {
+  const out: ReactNode[] = [];
+  rows.forEach((row, y) => {
+    let x = 0;
+    while (x < row.length) {
+      const c = row[x];
+      if (c === "." || !colors[c]) { x++; continue; }
+      let end = x;
+      while (end + 1 < row.length && row[end + 1] === c) end++;
+      out.push(<rect key={`${y0 + y}-${x}`} x={x} y={y0 + y} width={end - x + 1} height={1} fill={colors[c]} />);
+      x = end + 1;
+    }
+  });
+  return out;
+}
+
+function WalkingCat({ enabled, animal = "cat_orange" }: { enabled: boolean; animal?: PixelAnimalKey }) {
+  // Zvíře chodí (papoušek létá) pořád: dojde na náhodné místo, chvíli sedí, kouká a mrká, a zase vyrazí.
+  // Pohyb je jen přes CSS transform (řeší ho grafika), takže nelaguje; vsedě se nehýbe nic kromě mrknutí.
+  const A = PIXEL_ANIMALS[animal] ?? PIXEL_ANIMALS.cat_orange;
+  const CAT_W = 120;
+  const [x, setX] = useState(-CAT_W - 20);
+  const [mode, setMode] = useState<"walk" | "sit">("sit");
+  const [dir, setDir] = useState<1 | -1>(1);
+  const [dur, setDur] = useState(0);
+  const xRef = useRef(-CAT_W - 20);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flyRef = useRef(A.fly);
+  flyRef.current = A.fly;
+
+  const startWalk = () => {
+    const vw = window.innerWidth;
+    const desktop = vw >= 1024;
+    // na počítači se vyhýbá postrannímu menu vlevo a ikonám zpráv/hvězdy/zvonku vpravo
+    let min = desktop ? 270 : 8;
+    let max = desktop ? vw - 330 : vw - CAT_W - 8;
+    if (max - min < 160) { min = 8; max = Math.max(min + 160, vw - CAT_W - 8); }
+    let target = min + Math.random() * (max - min);
+    for (let i = 0; i < 6 && Math.abs(target - xRef.current) < 180; i++) target = min + Math.random() * (max - min);
+    const distance = Math.abs(target - xRef.current);
+    const speed = flyRef.current ? 120 + Math.random() * 40 : 55 + Math.random() * 20; // px za sekundu (pták letí rychleji)
+    setDir(target >= xRef.current ? 1 : -1);
+    setDur(distance / speed);
+    setMode("walk");
+    xRef.current = target;
+    setX(target);
+  };
+
+  const onArrived = () => {
+    setMode("sit");
+    setDur(0);
+    timer.current = setTimeout(startWalk, 4000 + Math.random() * 8000);
+  };
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    timer.current = setTimeout(startWalk, 1200);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);
+
+  if (!enabled || typeof document === "undefined") return null;
+  const walking = mode === "walk";
+  const eyeRects = (list: [number, number][]) => list.map(([ex, ey]) => <rect key={`${ex}-${ey}`} x={ex} y={ey} width={1} height={1} fill={A.eyeColor} />);
+  // Vykresleno přímo do <body> (portál): téma ".autumn-theme > *" jinak přepíše position:fixed na relative
+  // a zvíře by skončilo nulově vysoké na konci stránky.
+  return createPortal(<div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[35] overflow-hidden" style={{ position: "fixed", inset: 0, zIndex: 35, overflow: "hidden", contain: "paint" }}>
+    <style>{`
+      .cat-walker { top: calc(env(safe-area-inset-top, 0px) + 72px); bottom: auto; will-change: transform; }
+      @media (min-width: 1024px) { .cat-walker { top: 6px; } }
+      @keyframes catStepA { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
+      @keyframes catStepB { 0%, 49.9% { opacity: 0; } 50%, 100% { opacity: 1; } }
+      @keyframes catBlink { 0%, 93%, 100% { opacity: 1; } 94%, 98% { opacity: 0; } }
+      @keyframes birdBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(9px); } }
+      .cat-step-a { animation: catStepA .4s linear infinite; }
+      .cat-step-b { animation: catStepB .4s linear infinite; }
+      .bird-flap-a { animation: catStepA .26s linear infinite; }
+      .bird-flap-b { animation: catStepB .26s linear infinite; }
+      .cat-eyes { animation: catBlink 3.8s linear infinite; }
+      .bird-bob { animation: birdBob .8s ease-in-out infinite; }
+    `}</style>
+    <div className="cat-walker absolute left-0" onTransitionEnd={e => { if (e.target === e.currentTarget && e.propertyName === "transform" && mode === "walk") onArrived(); }} style={{ width: CAT_W, height: 70, transform: `translateX(${x}px)`, transition: walking ? `transform ${dur}s linear` : "none" }}>
+      {walking
+        ? <div className={A.fly ? "bird-bob" : undefined}>
+            <svg width={120} height={70} viewBox="0 0 24 14" shapeRendering="crispEdges" style={{ display: "block", transform: dir === -1 ? "scaleX(-1)" : undefined }}>
+              <g>{pixelRects(A.body, 0, A.colors)}</g>
+              {A.bodyEyes && <g>{eyeRects(A.bodyEyes)}</g>}
+              {A.fly
+                ? <>
+                    <g className="bird-flap-a">{pixelRects(A.wingUp ?? [], 0, A.colors)}</g>
+                    <g className="bird-flap-b">{pixelRects(A.wingDown ?? [], 0, A.colors)}</g>
+                  </>
+                : <>
+                    <g className="cat-step-a">{pixelRects(A.legsA ?? [], 11, A.colors)}</g>
+                    <g className="cat-step-b">{pixelRects(A.legsB ?? [], 11, A.colors)}</g>
+                  </>}
+            </svg>
+          </div>
+        : <svg width={70} height={70} viewBox="0 0 14 14" shapeRendering="crispEdges" style={{ display: "block", margin: "0 auto" }}>
+            <g>{pixelRects(A.sit, 0, A.colors)}</g>
+            <g className="cat-eyes">{eyeRects(A.sitEyes)}</g>
+          </svg>}
+    </div>
+  </div>, document.body);
+}
 
 function ShiftSavedToast({animations}:{animations:boolean}){return <div className="pointer-events-none fixed inset-0 z-[140] flex items-start justify-center pt-24">{animations&&<div className="absolute inset-0 overflow-hidden">{Array.from({length:8},(_,i)=><span key={i} className="leaf-fall absolute -top-10 text-2xl" style={{left:`${(i*7)%100}%`,animationDelay:`${(i%6)*.12}s`,animationDuration:`${1.6+(i%4)*.25}s`}}>{i%2?"🍂":"🍁"}</span>)}</div>}<div className="relative rounded-2xl border border-emerald-300/20 bg-[#0b1510]/95 px-5 py-3 shadow-2xl backdrop-blur-xl"><div className="flex items-center gap-3 text-sm font-bold text-emerald-200"><Icon name="check" size={18}/>Směna byla úspěšně uložena</div></div></div>}
 
