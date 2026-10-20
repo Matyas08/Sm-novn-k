@@ -62,7 +62,7 @@ const APP_ACCENT = "#9a4f2c";
 const APP_ACCENT_SECONDARY = "#c47a45";
 const AUTUMN_ACCENT = "#ff7a00";
 const AUTUMN_ACCENT_SECONDARY = "#ffd21f";
-const APP_VERSION = "2.1";
+const APP_VERSION = "2.2";
 const DAVID_AUTH_ID = "0989a80c-eaec-425b-a9e9-6ff0173c678d";
 const TRAM_REVIEW_EMAILS = new Set(["matejuher15@gmail.com"]);
 // ADMIN účet. ZMĚŇ na skutečný e-mail admina (stejný jako v admin-setup.sql a v Supabase Authentication).
@@ -100,6 +100,21 @@ const UPDATE_ITEMS_21 = [
   "Každý člen má nově vlastní sadu citátů a vidí povzbuzení připravené přímo pro sebe.",
   "U denního citátu se už nezobrazuje jméno člena ani autor — zůstává jen samotný citát.",
   "Proběhly také další drobné úpravy pro přesnější výpočty a přehlednější používání Směnovníku.",
+] as const;
+
+const UPDATE_ITEMS_22 = [
+  "Nová Schránka: v horní liště jsou ikony Zpráv a Oznámení s červeným počítadlem nepřečtených.",
+  "Zprávy můžeš posílat ostatním členům, vybrat více příjemců najednou nebo všechny a snadno odpovědět.",
+  "Oznámení se vytváří automaticky: chybějící směny na dnešek a další 2 dny, zítřejší směna, narozeniny a události dnes či zítra.",
+  "Důležitá oznámení jsou zvýrazněná, jde je hromadně označit jako přečtená a starší padají do sekce Proběhlé.",
+  "Směny lze po skončení hodnotit 0–5 hvězdičkami i s důvodem. Hodnocení se otevře 5 minut po konci směny.",
+  "Hodnocení směny stačí klepnout rovnou v oznámení; kdo chce, může ke hvězdičkám připsat vysvětlení.",
+  "U Matýska je navíc hodnocení tramvaje: číslo vozu a verdikt Mrdka, Ušla nebo Topka.",
+  "Narozeniny: v Nastavení si uložíš datum narození, ostatní ho uvidí v kalendáři a v ten den se ukáže i věk.",
+  "Události mají kategorie (Sport, Výlet, Párty, Jídlo, Rodina, Škola, Jiné) s filtrem, měsíčním členěním a sekcí Proběhlé.",
+  "Události lze upravovat a nejbližší akce je zvýrazněná velkou kartou s odpočtem.",
+  "Administrátor může upravovat jména a data narození členů a opravovat či mazat zprávy.",
+  "Přibyly i drobné opravy a vylepšení pro plynulejší chod Směnovníku.",
 ] as const;
 
 // Doplňková česká jména, která základní svátkové API nevrací.
@@ -600,12 +615,7 @@ export default function Home() {
   useEffect(() => {
     if (!session || !currentPerson) { setMessages([]); setDbNotifications([]); return; }
     let active = true;
-    let loadingInbox = false;
     const load = async () => {
-      // Prevent a slow Supabase request from overlapping the next refresh.
-      if (loadingInbox) return;
-      loadingInbox = true;
-      try {
       const [msgRes, notRes] = await Promise.all([
         supabase.from("messages").select("id,sender_id,subject,body,created_at,message_recipients(user_id,read_at)").order("created_at", { ascending: false }).limit(200),
         supabase.from("notifications").select("id,kind,title,body,important,created_at,read_at").order("created_at", { ascending: false }).limit(200),
@@ -618,14 +628,9 @@ export default function Home() {
       }));
       if (notRes.error) console.error("Chyba při načítání oznámení:", notRes.error);
       else setDbNotifications((notRes.data ?? []).map((n: any) => ({ id: n.id, title: n.title, text: n.body, at: n.created_at, read: Boolean(n.read_at), important: Boolean(n.important), icon: n.kind === "shift" ? "calendar" : n.kind === "event" ? "event" : "bell", showTime: true } as NotificationItem)));
-      } finally {
-        loadingInbox = false;
-      }
     };
     load();
-    // Use a fixed polling interval and a fixed-size dependency array.
-    // This avoids React Fast Refresh errors when the dependency list changes size.
-    const interval = setInterval(load, 90000);
+    const interval = setInterval(load, 30000);
     return () => { active = false; clearInterval(interval); };
   }, [session, currentPerson?.id, inboxTick]);
 
@@ -1322,7 +1327,7 @@ export default function Home() {
       .autumn-theme .autumn-neon-title { color:#ffc23a; text-shadow:0 0 22px rgba(255,135,0,.28); }
       .autumn-theme .autumn-leaf-accent { filter:drop-shadow(0 0 12px rgba(255,123,0,.35)); }
     `}</style>
-    {themeMode === "autumn" && <AutumnDecor animations={animationsEnabled && !isAdmin} />}
+    {themeMode === "autumn" && <AutumnDecor animations={animationsEnabled} />}
     <div className="flex min-h-screen">
       <Sidebar activePage={activePage} setActivePage={setActivePage} currentPerson={currentPerson} onLogout={logout} />
       <section className="w-full lg:ml-[252px]">
@@ -1391,7 +1396,7 @@ function Sidebar({ activePage, setActivePage, currentPerson, onLogout }: { activ
     {page:"updates",icon:"update",label:"Aktualizace"},
     {page:"settings",icon:"settings",label:"Nastavení"},
   ];
-  return <><aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-[252px] border-r border-white/[0.07] bg-[#0e0b08]/90 px-5 py-6 shadow-[20px_0_60px_rgba(0,0,0,.18)] backdrop-blur-md lg:flex lg:flex-col"><div className="mb-9 flex items-center gap-3 px-2"><div className="flex h-11 w-11 items-center justify-center rounded-2xl border theme-soft theme-ring"><Icon name="calendar" size={24}/></div><div><div className="text-[15px] font-black tracking-tight">Směnovník <span className="text-[10px] theme-text">v{APP_VERSION}</span></div><div className="text-[11px] text-slate-500">směny, škola & společný čas</div></div></div><nav className="space-y-1.5">{items.map(i=><button key={i.page} onClick={()=>setActivePage(i.page)} className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm transition ${activePage===i.page?"border theme-soft":"border border-transparent text-slate-500 hover:bg-white/[0.03] hover:text-white"}`}><Icon name={i.icon} size={19}/>{i.label}{i.page==="updates"&&<span className="ml-auto rounded-full bg-orange-400/15 px-2 py-0.5 text-[9px] font-bold text-orange-300">2.1</span>}</button>)}</nav><div className="mt-auto">{currentPerson&&<div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3"><Avatar person={currentPerson} size={38}/><div><div className="text-sm font-semibold">{currentPerson.name}</div><div className="flex items-center gap-1.5 text-[11px] text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/>{isAdminEmail(currentPerson.email)?"Administrátor":"Přihlášen"}</div></div></div></div>}<button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"><Icon name="logout" size={19}/>Odhlásit se</button></div></aside><div className="app-sidebar fixed left-0 right-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#0e0b08]/90 px-4 backdrop-blur-md lg:hidden"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border theme-soft"><Icon name="calendar" size={20}/></div><span className="font-black">Směnovník</span></div><div className="flex items-center gap-1"><HeaderActions /><button onClick={onLogout} className="rounded-xl p-2 text-slate-400 hover:text-red-400"><Icon name="logout"/></button></div></div><nav className="app-sidebar fixed bottom-0 left-0 right-0 z-40 grid grid-cols-6 border-t border-white/[0.07] bg-[#0e0b08]/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md lg:hidden">{items.map(i=><button key={`mobile-${i.page}`} onClick={()=>setActivePage(i.page)} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[8px] font-semibold transition ${activePage===i.page?"theme-soft":"text-slate-500"}`}><Icon name={i.icon} size={17}/><span className="max-w-full truncate">{i.label}</span></button>)}</nav></>;
+  return <><aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-[252px] border-r border-white/[0.07] bg-[#0e0b08]/90 px-5 py-6 shadow-[20px_0_60px_rgba(0,0,0,.18)] backdrop-blur-md lg:flex lg:flex-col"><div className="mb-9 flex items-center gap-3 px-2"><div className="flex h-11 w-11 items-center justify-center rounded-2xl border theme-soft theme-ring"><Icon name="calendar" size={24}/></div><div><div className="text-[15px] font-black tracking-tight">Směnovník <span className="text-[10px] theme-text">v{APP_VERSION}</span></div><div className="text-[11px] text-slate-500">směny, škola & společný čas</div></div></div><nav className="space-y-1.5">{items.map(i=><button key={i.page} onClick={()=>setActivePage(i.page)} className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm transition ${activePage===i.page?"border theme-soft":"border border-transparent text-slate-500 hover:bg-white/[0.03] hover:text-white"}`}><Icon name={i.icon} size={19}/>{i.label}{i.page==="updates"&&<span className="ml-auto rounded-full bg-orange-400/15 px-2 py-0.5 text-[9px] font-bold text-orange-300">{APP_VERSION}</span>}</button>)}</nav><div className="mt-auto">{currentPerson&&<div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3"><Avatar person={currentPerson} size={38}/><div><div className="text-sm font-semibold">{currentPerson.name}</div><div className="flex items-center gap-1.5 text-[11px] text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/>{isAdminEmail(currentPerson.email)?"Administrátor":"Přihlášen"}</div></div></div></div>}<button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"><Icon name="logout" size={19}/>Odhlásit se</button></div></aside><div className="app-sidebar fixed left-0 right-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#0e0b08]/90 px-4 backdrop-blur-md lg:hidden"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border theme-soft"><Icon name="calendar" size={20}/></div><span className="font-black">Směnovník</span></div><div className="flex items-center gap-1"><HeaderActions /><button onClick={onLogout} className="rounded-xl p-2 text-slate-400 hover:text-red-400"><Icon name="logout"/></button></div></div><nav className="app-sidebar fixed bottom-0 left-0 right-0 z-40 grid grid-cols-6 border-t border-white/[0.07] bg-[#0e0b08]/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md lg:hidden">{items.map(i=><button key={`mobile-${i.page}`} onClick={()=>setActivePage(i.page)} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[8px] font-semibold transition ${activePage===i.page?"theme-soft":"text-slate-500"}`}><Icon name={i.icon} size={17}/><span className="max-w-full truncate">{i.label}</span></button>)}</nav></>;
 }
 
 function PageHeader({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
@@ -2224,7 +2229,7 @@ function SettingsPage({currentPerson,setPeople,members,themeColor,setThemeColor,
         <button onClick={()=>{setThemeColor(APP_ACCENT);setThemeColor2(APP_ACCENT_SECONDARY);}} className="mt-4 rounded-xl border border-white/[0.08] px-4 py-2.5 text-xs text-slate-400 hover:bg-white/[0.04] hover:text-white">Vrátit výchozí vzhled</button>
       </div>
     </Card>
-    <Card className="p-6 xl:col-span-2"><div className="flex items-center gap-2"><Icon name="leaf" size={18}/><h2 className="font-bold">Sezónní vzhled a animace</h2></div><p className="mt-3 text-sm text-slate-400">Přepni mezi podzimním Směnovníkem 2.1 a původním klasickým vzhledem. Animace lze vypnout zvlášť.</p><div className="mt-5 grid gap-3 md:grid-cols-2"><button type="button" onClick={()=>setThemeMode("autumn")} className={`rounded-2xl border p-5 text-left transition ${themeMode==="autumn"?"border-orange-300/35 bg-orange-400/10":"border-white/[0.08] bg-black/15"}`}><div className="text-2xl">🍁</div><div className="mt-2 font-bold">Podzimní motiv</div><div className="mt-1 text-xs text-slate-500">Měděná, oranžová, listí a říjnové prvky.</div></button><button type="button" onClick={()=>setThemeMode("classic")} className={`rounded-2xl border p-5 text-left transition ${themeMode==="classic"?"theme-border theme-soft":"border-white/[0.08] bg-black/15"}`}><div className="text-2xl">✨</div><div className="mt-2 font-bold">Klasický motiv</div><div className="mt-1 text-xs text-slate-500">Původní barevný Směnovník.</div></button></div><button type="button" onClick={()=>setAnimationsEnabled(!animationsEnabled)} className="relative mt-4 flex w-full items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-black/15 p-4 text-left"><div className="pointer-events-none absolute -left-3 -bottom-6 text-7xl opacity-[0.08]">🍂</div><div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-300/15 bg-orange-400/[0.06] text-2xl">🍁</div><div><div className="text-sm font-bold">Animace</div><div className="mt-1 text-xs text-slate-500">Padání listí a další jemné pohyby.</div></div></div><div className={`relative h-7 w-12 rounded-full p-1 transition ${animationsEnabled?"bg-orange-500":"bg-slate-700"}`}><div className={`h-5 w-5 rounded-full bg-white transition ${animationsEnabled?"translate-x-5":""}`}/></div></button></Card>
+    <Card className="p-6 xl:col-span-2"><div className="flex items-center gap-2"><Icon name="leaf" size={18}/><h2 className="font-bold">Sezónní vzhled a animace</h2></div><p className="mt-3 text-sm text-slate-400">Přepni mezi podzimním Směnovníkem {APP_VERSION} a původním klasickým vzhledem. Animace lze vypnout zvlášť.</p><div className="mt-5 grid gap-3 md:grid-cols-2"><button type="button" onClick={()=>setThemeMode("autumn")} className={`rounded-2xl border p-5 text-left transition ${themeMode==="autumn"?"border-orange-300/35 bg-orange-400/10":"border-white/[0.08] bg-black/15"}`}><div className="text-2xl">🍁</div><div className="mt-2 font-bold">Podzimní motiv</div><div className="mt-1 text-xs text-slate-500">Měděná, oranžová, listí a říjnové prvky.</div></button><button type="button" onClick={()=>setThemeMode("classic")} className={`rounded-2xl border p-5 text-left transition ${themeMode==="classic"?"theme-border theme-soft":"border-white/[0.08] bg-black/15"}`}><div className="text-2xl">✨</div><div className="mt-2 font-bold">Klasický motiv</div><div className="mt-1 text-xs text-slate-500">Původní barevný Směnovník.</div></button></div><button type="button" onClick={()=>setAnimationsEnabled(!animationsEnabled)} className="relative mt-4 flex w-full items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-black/15 p-4 text-left"><div className="pointer-events-none absolute -left-3 -bottom-6 text-7xl opacity-[0.08]">🍂</div><div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-300/15 bg-orange-400/[0.06] text-2xl">🍁</div><div><div className="text-sm font-bold">Animace</div><div className="mt-1 text-xs text-slate-500">Padání listí a další jemné pohyby.</div></div></div><div className={`relative h-7 w-12 rounded-full p-1 transition ${animationsEnabled?"bg-orange-500":"bg-slate-700"}`}><div className={`h-5 w-5 rounded-full bg-white transition ${animationsEnabled?"translate-x-5":""}`}/></div></button></Card>
     <Card className="p-6 xl:col-span-2"><div className="flex items-center gap-2"><Icon name="lock" size={18}/><h2 className="font-bold">Změna hesla</h2></div><div className="mt-5 grid gap-3 md:grid-cols-3"><PasswordInput label="Staré heslo" value={oldPassword} onChange={setOldPassword}/><PasswordInput label="Nové heslo" value={newPassword} onChange={setNewPassword}/><PasswordInput label="Nové heslo znovu" value={newAgain} onChange={setNewAgain}/></div><button onClick={changePassword} className="theme-primary mt-5 rounded-xl px-5 py-3 text-xs font-bold text-white hover:brightness-110">Změnit heslo</button>{message&&<div className="mt-4 rounded-xl bg-white/[0.03] px-4 py-3 text-xs text-slate-400">{message}</div>}</Card>
   </div></div>
 }
@@ -2282,10 +2287,17 @@ function UpdatesPage(){
       <Card className="relative overflow-hidden p-6"><div className="text-5xl">🖨️</div><div className="mt-5 text-3xl font-black">Aktualizace 2.1</div><div className="mt-2 text-sm text-slate-500">Tisk, přesnější čas a nové citáty</div><div className="mt-6 rounded-2xl border border-orange-300/10 bg-orange-300/[0.04] p-4 text-sm leading-6 text-slate-300">Přidali jsme tisk směn a statistik, přesnější počítání pracovní doby a nové denní motivační citáty.</div></Card>
       <Card className="p-6"><h2 className="font-bold">Co je nového ve verzi 2.1</h2><UpdateList items={UPDATE_ITEMS_21}/></Card>
     </div>
+
+    <div className="my-8 flex items-center gap-3"><div className="h-px flex-1 bg-gradient-to-r from-transparent via-orange-300/20 to-orange-300/40"/><div className="rounded-full border border-orange-300/20 bg-orange-400/[0.06] px-4 py-2 text-xs font-black uppercase tracking-[.18em] text-orange-300">Aktualizace 2.2</div><div className="h-px flex-1 bg-gradient-to-l from-transparent via-orange-300/20 to-orange-300/40"/></div>
+
+    <div className="grid gap-5 lg:grid-cols-[.7fr_1.3fr]">
+      <Card className="relative overflow-hidden p-6"><div className="text-5xl">📬</div><div className="mt-5 text-3xl font-black">Aktualizace 2.2</div><div className="mt-2 text-sm text-slate-500">Schránka, hodnocení směn a narozeniny</div><div className="mt-6 rounded-2xl border border-orange-300/10 bg-orange-300/[0.04] p-4 text-sm leading-6 text-slate-300">Přidali jsme zprávy a oznámení, hodnocení směn hvězdičkami, narozeniny členů a chytřejší události s kategoriemi.</div></Card>
+      <Card className="p-6"><h2 className="font-bold">Co je nového ve verzi 2.2</h2><UpdateList items={UPDATE_ITEMS_22}/></Card>
+    </div>
   </div>;
 }
 
-function UpdateIntroModal({onDone}:{onDone:()=>void}){return <Modal onClose={()=>{}}><div className="text-center"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-400/10 text-3xl">🍂</div><div className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-orange-300">Směnovník {APP_VERSION}</div><h2 className="mt-2 text-2xl font-black">Vítej v aktualizaci 2.1</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Přidali jsme tisk, přesnější pracovní dobu a nové denní citáty.</p></div><div className="mt-6 max-h-[42vh] space-y-2 overflow-y-auto pr-1">{UPDATE_ITEMS_21.map(item=><div key={item} className="flex gap-3 rounded-xl bg-white/[0.025] p-3"><span className="text-orange-300">✓</span><span className="text-sm text-slate-300">{item}</span></div>)}</div><button type="button" onClick={onDone} className="mt-6 w-full rounded-2xl theme-primary py-3.5 text-sm font-black text-white">Super, přečetl jsem si to</button></Modal>}
+function UpdateIntroModal({onDone}:{onDone:()=>void}){return <Modal onClose={()=>{}}><div className="text-center"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-400/10 text-3xl">🍂</div><div className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-orange-300">Směnovník {APP_VERSION}</div><h2 className="mt-2 text-2xl font-black">Vítej v aktualizaci {APP_VERSION}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Přidali jsme zprávy a oznámení, hodnocení směn, narozeniny a lepší události.</p></div><div className="mt-6 max-h-[42vh] space-y-2 overflow-y-auto pr-1">{UPDATE_ITEMS_22.map(item=><div key={item} className="flex gap-3 rounded-xl bg-white/[0.025] p-3"><span className="text-orange-300">✓</span><span className="text-sm text-slate-300">{item}</span></div>)}</div><button type="button" onClick={onDone} className="mt-6 w-full rounded-2xl theme-primary py-3.5 text-sm font-black text-white">Super, přečetl jsem si to</button></Modal>}
 
 function ShiftSavedToast({animations}:{animations:boolean}){return <div className="pointer-events-none fixed inset-0 z-[140] flex items-start justify-center pt-24">{animations&&<div className="absolute inset-0 overflow-hidden">{Array.from({length:8},(_,i)=><span key={i} className="leaf-fall absolute -top-10 text-2xl" style={{left:`${(i*7)%100}%`,animationDelay:`${(i%6)*.12}s`,animationDuration:`${1.6+(i%4)*.25}s`}}>{i%2?"🍂":"🍁"}</span>)}</div>}<div className="relative rounded-2xl border border-emerald-300/20 bg-[#0b1510]/95 px-5 py-3 shadow-2xl backdrop-blur-xl"><div className="flex items-center gap-3 text-sm font-bold text-emerald-200"><Icon name="check" size={18}/>Směna byla úspěšně uložena</div></div></div>}
 
