@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 
 type ShiftType = "morning" | "afternoon" | "intershift" | "night" | "midnight" | "all_day" | "emergency" | "vacation" | "sick";
 type TramRating = "mrdka" | "usla" | "topka";
-type Page = "overview" | "shifts" | "events" | "stats" | "updates" | "settings" | "inbox" | "reviews";
+type Page = "overview" | "shifts" | "events" | "stats" | "updates" | "settings" | "inbox" | "reviews" | "advent";
 type AuthSession = { user?: { email?: string | null } } | null;
 type EventCategory = "sport" | "trip" | "party" | "food" | "family" | "school" | "other";
 
@@ -63,7 +63,7 @@ const APP_ACCENT = "#9a4f2c";
 const APP_ACCENT_SECONDARY = "#c47a45";
 const AUTUMN_ACCENT = "#ff7a00";
 const AUTUMN_ACCENT_SECONDARY = "#ffd21f";
-const APP_VERSION = "2.3";
+const APP_VERSION = "2.4";
 const DAVID_AUTH_ID = "0989a80c-eaec-425b-a9e9-6ff0173c678d";
 const TRAM_REVIEW_EMAILS = new Set(["matejuher15@gmail.com"]);
 // ADMIN účet. ZMĚŇ na skutečný e-mail admina (stejný jako v admin-setup.sql a v Supabase Authentication).
@@ -126,6 +126,19 @@ const UPDATE_ITEMS_23 = [
   "Motiv „Automaticky“ teď od listopadu do února zapíná zimu, jinak podzim.",
   "Kalendář směn, rozvrhy, Přehled i přihlašovací obrazovka mají zimní úpravu.",
   "Padání sněhu vypneš v Nastavení přepínačem Animace, mezi motivy přepneš tamtéž.",
+] as const;
+
+const UPDATE_ITEMS_24 = [
+  "Adventní kalendář: od 1. 12. se každý den otevře nové okénko – tradice, recepty, vtipy, kvízy a malé výzvy. Najdeš ho v menu pod „Advent“.",
+  "Na Přehledu je odpočet do Štědrého dne s adventním věncem, svíčky se zapalují podle adventních nedělí.",
+  "Nová karta Počasí pro České Budějovice: teplota, pocitová teplota, vítr, výhled na 3 dny a tip na cestu do práce.",
+  "Karta Vánoce ve Směnovníku ukáže, kdo má 24.–26. 12., na Silvestra a na Nový rok směnu a kdo volno.",
+  "V kalendáři směn jsou vidět státní svátky (i Velikonoce) a Silvestr.",
+  "Ve Statistikách přibyla Zimní sezóna: kdo přežil nejvíc vánočních směn, hodiny a noční směny od prosince do února.",
+  "Na kartách v zimním motivu leží sníh a zvířátka nosí čepici se šálou a nechávají ve sněhu stopy.",
+  "31. 12. od 23:00 běží odpočet do půlnoci, pak ohňostroj a 1. 1. přání do nového roku.",
+  "V Nastavení si vybereš hustotu sněhu: slabý, normální nebo vánice. Slabší telefony automaticky dostanou méně vloček.",
+  "Tisk rozpisu a statistik je teď v barvách aktuálního motivu.",
 ] as const;
 
 // Doplňková česká jména, která základní svátkové API nevrací.
@@ -296,6 +309,7 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
     check: <svg {...common}><path d="m5 12 4 4L19 6"/></svg>,
     mail: <svg {...common}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>,
     bell: <svg {...common}><path d="M6 9a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>,
+    gift: <svg {...common}><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12M12 8S10.5 3.5 8 4.5 9 8 12 8Zm0 0s1.5-4.5 4-3.5S15 8 12 8Z"/></svg>,
     star: <svg {...common}><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3Z"/></svg>,
   };
   return <span style={{ width: size, height: size, display: "inline-flex", flexShrink: 0 }}>{icons[name] ?? icons.info}</span>;
@@ -437,6 +451,13 @@ function openPrintWindow(title: string, body: string, landscape = false) {
     return;
   }
 
+  // Tisk v barvách aktuálního motivu
+  const printMode = document.querySelector(".winter-theme") ? "winter" : document.querySelector(".halloween-theme") ? "halloween" : "autumn";
+  const P = printMode === "winter"
+    ? { accent: "#2f8fdc", eyebrow: "#1d5fa8", badgeBg: "#eaf4ff", badgeBorder: "#9cc9f2", badgeText: "#1d4f86" }
+    : printMode === "halloween"
+      ? { accent: "#ff7518", eyebrow: "#7b2cbf", badgeBg: "#f6ecff", badgeBorder: "#cfa6f5", badgeText: "#5a189a" }
+      : { accent: "#e87524", eyebrow: "#b45309", badgeBg: "#fff4e8", badgeBorder: "#f3c18f", badgeText: "#9a4b12" };
   printWindow.document.write(`<!doctype html>
 <html lang="cs">
 <head>
@@ -450,9 +471,9 @@ function openPrintWindow(title: string, body: string, landscape = false) {
   h1 { margin: 0 0 5px; font-size: 25px; letter-spacing: -.55px; font-weight: 800; }
   h2 { margin: 20px 0 8px; font-size: 14px; letter-spacing: -.2px; }
   .muted { color: #64748b; }
-  .header { position: relative; border-bottom: 3px solid #e87524; padding: 0 0 12px 13px; margin-bottom: 14px; }
-  .header:before { content: ""; position: absolute; left: 0; top: 2px; bottom: 12px; width: 4px; border-radius: 4px; background: #e87524; }
-  .header .eyebrow { margin-bottom: 5px; color: #b45309; font-size: 8px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; }
+  .header { position: relative; border-bottom: 3px solid ${P.accent}; padding: 0 0 12px 13px; margin-bottom: 14px; }
+  .header:before { content: ""; position: absolute; left: 0; top: 2px; bottom: 12px; width: 4px; border-radius: 4px; background: ${P.accent}; }
+  .header .eyebrow { margin-bottom: 5px; color: ${P.eyebrow}; font-size: 8px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; }
   .header .doc-meta { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: #64748b; font-size: 9px; }
   .summary { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 7px; margin: 12px 0 17px; }
   .box { border: 1px solid #dbe2e8; border-radius: 7px; padding: 9px 10px; background: #fff; color: #64748b; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .45px; }
@@ -466,10 +487,10 @@ function openPrintWindow(title: string, body: string, landscape = false) {
   td { overflow-wrap: anywhere; }
   td:nth-child(1), td:nth-child(2), td:nth-child(4), td:nth-child(5) { white-space: nowrap; }
   td:last-child { min-width: 100px; }
-  .badge { display: inline-block; border-radius: 4px; background: #fff4e8; border: 1px solid #f3c18f; color: #9a4b12; padding: 3px 6px; font-size: 8px; font-weight: 800; white-space: nowrap; }
+  .badge { display: inline-block; border-radius: 4px; background: ${P.badgeBg}; border: 1px solid ${P.badgeBorder}; color: ${P.badgeText}; padding: 3px 6px; font-size: 8px; font-weight: 800; white-space: nowrap; }
   .bar-row { display: grid; grid-template-columns: 120px 1fr 80px; align-items: center; gap: 8px; margin: 7px 0; }
   .bar-track { height: 8px; border-radius: 99px; background: #e8edf2; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 99px; background: #e87524; }
+  .bar-fill { height: 100%; border-radius: 99px; background: ${P.accent}; }
   .foot { margin-top: 16px; padding-top: 8px; border-top: 1px solid #dbe2e8; font-size: 8px; color: #64748b; }
   @media print { .no-print { display:none !important; } }
   @media screen { body { padding: 24px; max-width: 1400px; margin: 0 auto; } }
@@ -669,6 +690,8 @@ export default function Home() {
   const [themePref, setThemePref] = useState<ThemePref>("auto");
   const themeMode: ThemeMode = themePref === "auto" ? autoThemeForDate() : themePref === "halloween" && halloweenLocked() ? "autumn" : themePref;
   const [animationsEnabled, setAnimationsEnabled] = useState(true);
+  const [snowLevel, setSnowLevel] = useState<SnowLevel>("normal");
+  const [adventOpened, setAdventOpened] = useState<number[]>([]);
   const [showUpdateIntro, setShowUpdateIntro] = useState(false);
   const [showShiftSuccess, setShowShiftSuccess] = useState(false);
   const [practicePresetDate, setPracticePresetDate] = useState("");
@@ -999,6 +1022,9 @@ export default function Home() {
     setThemeColor2(saved2 || APP_ACCENT_SECONDARY);
     setThemePref(savedPref || "auto");
     setAnimationsEnabled(savedAnimations !== "off");
+    const savedSnow = localStorage.getItem(`shift-snow-${currentPerson.email}`) as SnowLevel | null;
+    setSnowLevel(savedSnow === "light" || savedSnow === "blizzard" ? savedSnow : "normal");
+    try { setAdventOpened(JSON.parse(localStorage.getItem(`smenovnik-advent-${adventYear()}-${currentPerson.email}`) || "[]")); } catch { setAdventOpened([]); }
     setShowUpdateIntro(localStorage.getItem(`smenovnik-${APP_VERSION}-read-${currentPerson.email}`) !== "yes");
   }, [currentPerson]);
 
@@ -1008,7 +1034,17 @@ export default function Home() {
     localStorage.setItem(`shift-theme2-${currentPerson.email}`, themeColor2);
     localStorage.setItem(`shift-theme-pref-w-${currentPerson.email}`, themePref);
     localStorage.setItem(`shift-animations-${currentPerson.email}`, animationsEnabled ? "on" : "off");
-  }, [currentPerson, themeColor, themeColor2, themePref, animationsEnabled]);
+    localStorage.setItem(`shift-snow-${currentPerson.email}`, snowLevel);
+  }, [currentPerson, themeColor, themeColor2, themePref, animationsEnabled, snowLevel]);
+
+  const openAdventDoor = (day: number) => {
+    if (!currentPerson) return;
+    setAdventOpened(prev => {
+      const next = [...new Set([...prev, day])].sort((a, b) => a - b);
+      try { localStorage.setItem(`smenovnik-advent-${adventYear()}-${currentPerson.email}`, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
 
 
   useEffect(() => {
@@ -1474,6 +1510,27 @@ export default function Home() {
 .halloween-theme .school-plain:hover { border-color: rgba(255,117,24,.55) !important; }
 
 /* ===== Zimní motiv ===== */
+/* --- sníh na kartách --- */
+.winter-theme.autumn-theme .app-card, .winter-theme.autumn-theme .person-card, .winter-theme.autumn-theme .school-card { position: relative; }
+.winter-theme.autumn-theme .app-card::after, .winter-theme.autumn-theme .person-card::after, .winter-theme.autumn-theme .school-card::after {
+  content: ""; position: absolute; left: 16px; right: 16px; top: 0; height: 10px; pointer-events: none; z-index: 3; opacity: .88;
+  background:
+    linear-gradient(rgba(255,255,255,.92),rgba(255,255,255,.92)) 0 0/100% 2.5px no-repeat,
+    radial-gradient(ellipse 9px 5px at 50% 0, rgba(255,255,255,.95) 97%, transparent 100%) 0 0/18px 6px repeat-x,
+    radial-gradient(ellipse 14px 8px at 50% 0, rgba(240,248,255,.85) 97%, transparent 100%) 7px 0/31px 9px repeat-x;
+  filter: drop-shadow(0 1px 2px rgba(150,200,255,.35));
+}
+@keyframes snowFallWind { 0% { transform: translate3d(0,-12vh,0); opacity: 0; } 8% { opacity: var(--o,.8); } 92% { opacity: var(--o,.8); } 100% { transform: translate3d(-38vw,112vh,0); opacity: 0; } }
+/* --- advent --- */
+@keyframes candleFlicker { 0%,100% { transform: scale(1,1) translateY(0); opacity: 1; } 30% { transform: scale(.92,1.08) translateY(-.4px); opacity: .9; } 60% { transform: scale(1.06,.95) translateY(.3px); opacity: 1; } }
+.candle-flame { transform-box: fill-box; transform-origin: 50% 100%; animation: candleFlicker 1.4s ease-in-out infinite; }
+@keyframes doorOpen { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(-108deg); opacity: .15; } }
+.advent-door-front-open { animation: doorOpen .65s cubic-bezier(.4,.1,.6,1) forwards; }
+@keyframes readyGlow { 0%,100% { box-shadow: 0 0 0 2px rgba(255,215,90,.55), 0 0 18px rgba(255,200,60,.25); } 50% { box-shadow: 0 0 0 2px rgba(255,225,120,.95), 0 0 34px rgba(255,200,60,.50); } }
+.advent-ready { animation: readyGlow 1.8s ease-in-out infinite; }
+@keyframes nyPop { 0% { transform: scale(.4); opacity: 0; } 30% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: .9; } }
+.ny-pop { animation: nyPop .9s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .candle-flame, .advent-ready, .advent-door-front-open, .ny-pop { animation: none !important; } }
 @keyframes snowFall { 0% { transform: translate3d(0,-12vh,0); opacity: 0; } 8% { opacity: var(--o,.8); } 92% { opacity: var(--o,.8); } 100% { transform: translate3d(0,112vh,0); opacity: 0; } }
 @keyframes snowSway { 0%,100% { transform: translateX(0); } 50% { transform: translateX(var(--sway,26px)); } }
 @keyframes xmasBlink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
@@ -1483,7 +1540,6 @@ export default function Home() {
 .snow-dot { display: block; border-radius: 9999px; background: #fff; box-shadow: 0 0 6px rgba(255,255,255,.7); }
 .xmas-bulb { animation: xmasBlink 1.6s ease-in-out infinite; }
 .frost-shimmer { animation: frostShimmer 6s ease-in-out infinite; }
-@media (max-width: 768px) { .snow-fall:nth-of-type(3n) { display: none; } }
 @media (prefers-reduced-motion: reduce) { .snow-fall, .snow-sway, .xmas-bulb, .frost-shimmer { animation: none !important; } .snow-fall { display: none; } }
 
 .winter-theme { color-scheme: dark; }
@@ -1598,19 +1654,20 @@ export default function Home() {
     `}</style>
     {themeMode === "autumn" && <AutumnDecor animations={animationsEnabled} />}
     {themeMode === "halloween" && <HalloweenDecor animations={animationsEnabled} />}
-    {themeMode === "winter" && <WinterDecor animations={animationsEnabled} />}
+    {themeMode === "winter" && <WinterDecor animations={animationsEnabled} density={snowLevel} />}
     <div className="flex min-h-screen">
-      <Sidebar activePage={activePage} setActivePage={setActivePage} currentPerson={currentPerson} onLogout={logout} />
+      <Sidebar activePage={activePage} setActivePage={setActivePage} currentPerson={currentPerson} onLogout={logout} adventBadge={todaysDoorWaiting(adventOpened)} />
       <section className="w-full lg:ml-[252px]">
         <div className="w-full px-4 pb-28 pt-24 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 lg:pb-16 lg:pt-10">
-          {activePage === "overview" && <Overview people={members} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} davidWeek={davidWeek} setDavidWeek={setDavidWeek} practice={practice} openPractice={(date)=>{setPracticePresetDate(date||"");setShowPracticeModal(true);}} deletePractice={deletePractice} /> }
+          {activePage === "overview" && <Overview people={members} shifts={shifts} currentPerson={currentPerson} events={events} nameDay={nameDay} openAddShift={openAddShift} tibiWeek={tibiWeek} setTibiWeek={setTibiWeek} tibiOdd={tibiOdd} tibiEven={tibiEven} davidSchool={davidSchool} davidWeek={davidWeek} setDavidWeek={setDavidWeek} practice={practice} openPractice={(date)=>{setPracticePresetDate(date||"");setShowPracticeModal(true);}} deletePractice={deletePractice} adventOpened={adventOpened} onOpenAdvent={()=>setActivePage("advent")} animations={animationsEnabled} /> }
+          {activePage === "advent" && <AdventPage opened={adventOpened} onOpenDoor={openAdventDoor} onAction={(a)=>{ if (a === "message") { setInboxTab("message"); setActivePage("inbox"); } else setActivePage("events"); }} />}
           {activePage === "shifts" && <ShiftsPage people={members} shifts={shifts} currentPerson={currentPerson} selectedPerson={selectedPerson} setSelectedPerson={setSelectedPerson} month={month} year={year} changeMonth={changeMonth} goToToday={()=>{const n=new Date();setMonth(n.getMonth());setYear(n.getFullYear());}} filter={shiftFilter} setFilter={setShiftFilter} openAddShift={openAddShift} openEditShift={openEditShift} saveShiftRating={saveShiftRating} loading={loadingShifts} autumn={themeMode === "autumn"} /> }
           {activePage === "events" && <EventsPage events={events} people={members} currentPerson={currentPerson} openCreate={()=>{setEditingEvent(null);setShowEventModal(true);}} deleteEvent={deleteEvent} onEditEvent={(e:EventItem)=>{setEditingEvent(e);setShowEventModal(true);}} />}
           {activePage === "updates" && <UpdatesPage />}
           {activePage === "inbox" && <InboxPage messages={messages} notifications={notifications} people={people} currentPerson={currentPerson} tab={inboxTab} shifts={shifts} onRateShift={saveShiftRating} onSend={sendMessage} onMarkMessageRead={markMessageRead} onMarkNotificationsRead={markNotificationsRead} isAdmin={isAdmin} onDeleteMessage={deleteMessage} onEditMessage={editMessage} />}
           {activePage === "reviews" && <ReviewsPage shifts={shifts} people={people} currentPerson={currentPerson} onRateShift={saveShiftRating} />}
-          {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} statsView={statsView} setStatsView={setStatsView} statsMonthKey={statsMonthKey} setStatsMonthKey={setStatsMonthKey} statsWeekStart={statsWeekStart} setStatsWeekStart={setStatsWeekStart} statsPeriod={statsPeriod} />}
-          {activePage === "settings" && <SettingsPage members={members} currentPerson={currentPerson} setPeople={setPeople} themeColor={themeColor} setThemeColor={setThemeColor} themeColor2={themeColor2} setThemeColor2={setThemeColor2} themeMode={themePref} setThemeMode={setThemePref} animationsEnabled={animationsEnabled} setAnimationsEnabled={setAnimationsEnabled} /> }
+          {activePage === "stats" && <StatsPage stats={stats} selectedId={statsPersonId} setSelectedId={setStatsPersonId} statsView={statsView} setStatsView={setStatsView} statsMonthKey={statsMonthKey} setStatsMonthKey={setStatsMonthKey} statsWeekStart={statsWeekStart} setStatsWeekStart={setStatsWeekStart} statsPeriod={statsPeriod} members={members} shifts={shifts} />}
+          {activePage === "settings" && <SettingsPage members={members} currentPerson={currentPerson} setPeople={setPeople} themeColor={themeColor} setThemeColor={setThemeColor} themeColor2={themeColor2} setThemeColor2={setThemeColor2} themeMode={themePref} setThemeMode={setThemePref} animationsEnabled={animationsEnabled} setAnimationsEnabled={setAnimationsEnabled} snowLevel={snowLevel} setSnowLevel={setSnowLevel} /> }
         </div>
       </section>
     </div>
@@ -1618,7 +1675,8 @@ export default function Home() {
     {showShiftModal && currentPerson && <ShiftModal person={people.find(p => p.id === (editingShift?.userId ?? shiftOwnerId)) ?? currentPerson} owners={isAdmin ? members : undefined} ownerId={shiftOwnerId} setOwnerId={setShiftOwnerId} editing={editingShift} date={shiftDate} setDate={setShiftDate} endDate={shiftEndDate} setEndDate={setShiftEndDate} type={shiftType} setType={setShiftType} start={startTime} setStart={setStartTime} end={endTime} setEnd={setEndTime} note={note} setNote={setNote} saving={savingShift} onClose={()=>setShowShiftModal(false)} onSave={saveShift} onDelete={deleteShift} />}
     {showEventModal && <EventModal people={members} initial={editingEvent} onClose={()=>{setShowEventModal(false);setEditingEvent(null);}} onSave={saveEvent} />}
     {showPracticeModal && (currentPerson?.email === "dkudlata9@gmail.com" || isAdmin) && <PracticeModal initialDate={practicePresetDate} onClose={()=>setShowPracticeModal(false)} onSave={savePractice} />}
-    <WalkingCat enabled={animationsEnabled && !!currentPerson} animal={pixelAnimalFor(currentPerson?.email)} />
+    <WalkingCat enabled={animationsEnabled && !!currentPerson} animal={pixelAnimalFor(currentPerson?.email)} winter={themeMode === "winter"} />
+    {currentPerson && <NewYearLayer animations={animationsEnabled} />}
     {showUpdateIntro && currentPerson && <UpdateIntroModal onDone={()=>{localStorage.setItem(`smenovnik-${APP_VERSION}-read-${currentPerson.email}`, "yes");setShowUpdateIntro(false);}} />}
     {showShiftSuccess && <ShiftSavedToast animations={animationsEnabled} />}
   </main></ThemeModeCtx.Provider></InboxCtx.Provider>;
@@ -1690,16 +1748,17 @@ function LoginScreen({ selected, setSelected, password, setPassword, error, load
   </div>;
 }
 
-function Sidebar({ activePage, setActivePage, currentPerson, onLogout }: { activePage:Page; setActivePage:(p:Page)=>void; currentPerson:Person|null; onLogout:()=>void; }) {
+function Sidebar({ activePage, setActivePage, currentPerson, onLogout, adventBadge = false }: { activePage:Page; setActivePage:(p:Page)=>void; currentPerson:Person|null; onLogout:()=>void; adventBadge?:boolean; }) {
   const items: {page:Page;icon:string;label:string}[] = [
     {page:"overview",icon:"home",label:"Přehled"},
     {page:"shifts",icon:"calendar",label:"Směny"},
     {page:"events",icon:"event",label:"Události"},
+    ...(adventPageVisible() ? [{page:"advent" as Page,icon:"gift",label:"Advent"}] : []),
     {page:"stats",icon:"chart",label:"Statistiky"},
     {page:"updates",icon:"update",label:"Aktualizace"},
     {page:"settings",icon:"settings",label:"Nastavení"},
   ];
-  return <><aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-[252px] border-r border-white/[0.07] bg-[#0e0b08]/90 px-5 py-6 shadow-[20px_0_60px_rgba(0,0,0,.18)] backdrop-blur-md lg:flex lg:flex-col"><div className="mb-9 flex items-center gap-3 px-2"><div className="flex h-11 w-11 items-center justify-center rounded-2xl border theme-soft theme-ring"><Icon name="calendar" size={24}/></div><div><div className="text-[15px] font-black tracking-tight">Směnovník <span className="text-[10px] theme-text">v{APP_VERSION}</span></div><div className="text-[11px] text-slate-500">směny, škola & společný čas</div></div></div><nav className="space-y-1.5">{items.map(i=><button key={i.page} onClick={()=>setActivePage(i.page)} className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm transition ${activePage===i.page?"border theme-soft":"border border-transparent text-slate-500 hover:bg-white/[0.03] hover:text-white"}`}><Icon name={i.icon} size={19}/>{i.label}{i.page==="updates"&&<span className="ml-auto rounded-full bg-orange-400/15 px-2 py-0.5 text-[9px] font-bold text-orange-300">{APP_VERSION}</span>}</button>)}</nav><div className="mt-auto">{currentPerson&&<div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3"><Avatar person={currentPerson} size={38}/><div><div className="text-sm font-semibold">{currentPerson.name}</div><div className="flex items-center gap-1.5 text-[11px] text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/>{isAdminEmail(currentPerson.email)?"Administrátor":"Přihlášen"}</div></div></div></div>}<button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"><Icon name="logout" size={19}/>Odhlásit se</button></div></aside><div className="app-sidebar fixed left-0 right-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#0e0b08]/90 px-4 backdrop-blur-md lg:hidden"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border theme-soft"><Icon name="calendar" size={20}/></div><span className="font-black">Směnovník</span></div><div className="flex items-center gap-1"><HeaderActions /><button onClick={onLogout} className="rounded-xl p-2 text-slate-400 hover:text-red-400"><Icon name="logout"/></button></div></div><nav className="app-sidebar fixed bottom-0 left-0 right-0 z-40 grid grid-cols-6 border-t border-white/[0.07] bg-[#0e0b08]/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md lg:hidden">{items.map(i=><button key={`mobile-${i.page}`} onClick={()=>setActivePage(i.page)} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[8px] font-semibold transition ${activePage===i.page?"theme-soft":"text-slate-500"}`}><Icon name={i.icon} size={17}/><span className="max-w-full truncate">{i.label}</span></button>)}</nav></>;
+  return <><aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-[252px] border-r border-white/[0.07] bg-[#0e0b08]/90 px-5 py-6 shadow-[20px_0_60px_rgba(0,0,0,.18)] backdrop-blur-md lg:flex lg:flex-col"><div className="mb-9 flex items-center gap-3 px-2"><div className="flex h-11 w-11 items-center justify-center rounded-2xl border theme-soft theme-ring"><Icon name="calendar" size={24}/></div><div><div className="text-[15px] font-black tracking-tight">Směnovník <span className="text-[10px] theme-text">v{APP_VERSION}</span></div><div className="text-[11px] text-slate-500">směny, škola & společný čas</div></div></div><nav className="space-y-1.5">{items.map(i=><button key={i.page} onClick={()=>setActivePage(i.page)} className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm transition ${activePage===i.page?"border theme-soft":"border border-transparent text-slate-500 hover:bg-white/[0.03] hover:text-white"}`}><Icon name={i.icon} size={19}/>{i.label}{i.page==="updates"&&<span className="ml-auto rounded-full bg-orange-400/15 px-2 py-0.5 text-[9px] font-bold text-orange-300">{APP_VERSION}</span>}{i.page==="advent"&&adventBadge&&<span className="ml-auto h-2 w-2 rounded-full bg-red-500"/>}</button>)}</nav><div className="mt-auto">{currentPerson&&<div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3"><Avatar person={currentPerson} size={38}/><div><div className="text-sm font-semibold">{currentPerson.name}</div><div className="flex items-center gap-1.5 text-[11px] text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/>{isAdminEmail(currentPerson.email)?"Administrátor":"Přihlášen"}</div></div></div></div>}<button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"><Icon name="logout" size={19}/>Odhlásit se</button></div></aside><div className="app-sidebar fixed left-0 right-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#0e0b08]/90 px-4 backdrop-blur-md lg:hidden"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border theme-soft"><Icon name="calendar" size={20}/></div><span className="font-black">Směnovník</span></div><div className="flex items-center gap-1"><HeaderActions /><button onClick={onLogout} className="rounded-xl p-2 text-slate-400 hover:text-red-400"><Icon name="logout"/></button></div></div><nav style={{gridTemplateColumns:`repeat(${items.length},minmax(0,1fr))`}} className="app-sidebar fixed bottom-0 left-0 right-0 z-40 grid border-t border-white/[0.07] bg-[#0e0b08]/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md lg:hidden">{items.map(i=><button key={`mobile-${i.page}`} onClick={()=>setActivePage(i.page)} className={`relative flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[8px] font-semibold transition ${activePage===i.page?"theme-soft":"text-slate-500"}`}><Icon name={i.icon} size={17}/><span className="max-w-full truncate">{i.label}</span>{i.page==="advent"&&adventBadge&&<span className="absolute right-2 top-1 h-2 w-2 rounded-full bg-red-500"/>}</button>)}</nav></>;
 }
 
 function PageHeader({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
@@ -1788,7 +1847,7 @@ function dailyBoost(person: Person | null) {
   return personQuotes[(day - 1) % personQuotes.length];
 }
 
-function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift, tibiWeek, setTibiWeek, tibiOdd, tibiEven, davidSchool, davidWeek, setDavidWeek, practice, openPractice, deletePractice }: { people:Person[]; shifts:Shift[]; currentPerson:Person|null; events:EventItem[]; nameDay:string; openAddShift:(date?:string)=>void; tibiWeek:"odd"|"even"; setTibiWeek:(v:"odd"|"even")=>void; tibiOdd:WeekSchedule;tibiEven:WeekSchedule;davidSchool:WeekSchedule;davidWeek:"odd"|"even";setDavidWeek:(v:"odd"|"even")=>void;practice:PracticeItem[];openPractice:(date?:string)=>void;deletePractice:(id:string)=>Promise<void>; }) {
+function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift, tibiWeek, setTibiWeek, tibiOdd, tibiEven, davidSchool, davidWeek, setDavidWeek, practice, openPractice, deletePractice, adventOpened, onOpenAdvent, animations }: { people:Person[]; shifts:Shift[]; currentPerson:Person|null; events:EventItem[]; nameDay:string; openAddShift:(date?:string)=>void; tibiWeek:"odd"|"even"; setTibiWeek:(v:"odd"|"even")=>void; tibiOdd:WeekSchedule;tibiEven:WeekSchedule;davidSchool:WeekSchedule;davidWeek:"odd"|"even";setDavidWeek:(v:"odd"|"even")=>void;practice:PracticeItem[];openPractice:(date?:string)=>void;deletePractice:(id:string)=>Promise<void>; adventOpened:number[]; onOpenAdvent:()=>void; animations:boolean; }) {
   const [clock,setClock]=useState<number|null>(null);
   const seasonMode=useContext(ThemeModeCtx);
   const hwO=seasonMode==="halloween";
@@ -1858,6 +1917,7 @@ function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift
   },[people.length,shifts,today]);
   return <div><PageHeader eyebrow="SMĚNOVNÍK" title="Přehled" description="Všechno důležité na jednom místě." action={<div className="w-full rounded-2xl border border-orange-400/20 bg-black/20 px-5 py-3.5 backdrop-blur-sm sm:w-auto sm:min-w-[340px] xl:min-w-[390px]"><div className="text-[9px] font-bold uppercase tracking-[.18em] text-orange-300/70">Dnešní povzbuzení</div><div className="mt-1.5 text-sm font-semibold text-slate-200">{dailyBoost(currentPerson)}</div></div>}/><AutumnSectionTitle text="Podzimní přehled"/>
     <section className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{people.map(p=>{const todayShifts=todayShiftsByUser.get(p.id)??[];return <div key={p.id} role="button" tabIndex={0} aria-label={`Otevřít informace o směnách: ${p.name}`} onClick={()=>setDetailPerson(p)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setDetailPerson(p);}}} className="person-card group relative flex cursor-pointer flex-col overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(31,24,19,.96),rgba(14,12,10,.94))] p-5 text-left transition hover:-translate-y-1 hover:bg-white/[0.03] focus:outline-none focus:ring-2 focus:ring-orange-400/60" style={{borderColor:`${p.color}38`}}><div className="autumn-only season-title pointer-events-none absolute right-3 top-2 text-2xl opacity-20">{seasonB}</div><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div className="min-w-0 flex-1"><div className="text-[15px] font-black">{p.name}</div></div></div><div className="relative mt-5 flex-1 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{todayShifts.length>0?<div className="space-y-2">{todayShifts.map(s=><div key={s.id} className="rounded-xl border px-3 py-2" style={{borderColor:`${shiftInfo[s.type].color}38`,background:`${shiftInfo[s.type].color}0d`}}><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-base font-black">{shiftTimeLabel(s)}</div></div>)}</div>:<div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div>}</div><div className="relative mt-3 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[.12em] text-slate-600 transition group-hover:text-orange-300"><span>Detail</span><Icon name="right" size={14}/></div></div>})}</section>
+    <section className="mb-8 grid gap-5 lg:grid-cols-2 2xl:grid-cols-3"><WeatherCard/>{adventCountdownVisible()&&<AdventCountdownCard opened={adventOpened} onOpen={onOpenAdvent} animations={animations}/>}{christmasShiftsVisible()&&<ChristmasShiftsCard people={people} shifts={shifts}/>}</section>
     <section className="mb-8 grid gap-5 xl:grid-cols-[1.75fr_.95fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-400">Seřazené podle toho, komu začíná směna nejdřív</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcomingGroups.map(group=><div key={group.key} className="space-y-2"><div className="px-1 pt-2 text-[11px] font-black uppercase tracking-[.14em] text-orange-300/80">{dayHeading(group.key,today)}</div>{group.items.map(s=>{const p=peopleById.get(s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="mt-1 text-xs font-extrabold theme-text">{shiftCountdown(s,clock)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-400">{shiftTimeLabel(s)}</div></div></div>})}</div>)}</div></Card><Card className="relative overflow-hidden p-6"><div className="pointer-events-none absolute -right-3 -top-4 text-6xl opacity-10">{seasonA}</div><h2 className="font-bold">Informace</h2><p className="mt-1 text-xs text-slate-400">Dnešní rychlý přehled</p><div className="relative mx-auto mt-6 grid max-w-[390px] grid-cols-2 gap-3"><InfoBubble label="Směn tento měsíc" value={String(monthShiftCount)} icon="calendar"/><InfoBubble label="Směn dnes" value={String(todayShiftCount)} icon="clock"/><div className="col-span-2 mx-auto -my-1 flex h-28 w-28 flex-col items-center justify-center rounded-full border border-orange-300/25 bg-orange-500/10 text-center shadow-[0_0_45px_rgba(249,115,22,.12)]"><div className="text-2xl">{hwO?"🎃":seasonMode==="winter"?(isFestiveSeason()?"🎄":"❄️"):"🍂"}</div><div className="mt-1 text-sm font-black capitalize text-orange-200">{dateInfo.weekday}</div><div className="text-xs font-semibold text-orange-300/70">{dateInfo.date}</div></div><InfoBubble label="Událostí dnes" value={String(todayEventCount)} icon="event"/><InfoBubble label="Dnešní svátek" value={nameDay||"Načítám…"} icon="users" small/><div className="col-span-2"><InfoBubble label="Příští společné volno" icon="calendar" small value={commonFreeDay?dayHeading(commonFreeDay,today):"Zatím žádné v rozpisu"}/></div><div className="col-span-2"><InfoBubble label="Nejbližší událost" icon="event" small value={nextEvent?<><div className="truncate">{nextEvent.title}</div><div className="mt-1 text-xs font-semibold text-orange-200/80">{dateCountdown(nextEvent.date,today)} · {formatDate(nextEvent.date)}{nextEvent.time?` · ${nextEvent.time}`:""}</div></>:"Žádná naplánovaná"}/></div><div className="col-span-2"><InfoBubble label="Nejbližší narozeniny" icon="users" small value={nextBirthday?<><div className="truncate">🎂 {nextBirthday.person.name}</div><div className="mt-1 text-xs font-semibold text-orange-200/80">{dateCountdown(nextBirthday.date,today)} · {new Date(`${nextBirthday.date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})} · {nextBirthday.age}. narozeniny</div></>:"Zatím nikdo nemá zadané datum narození"}/></div></div></Card></section>
     <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy na jednom místě.</p></div><div className="grid gap-6"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} weekParity={tibiWeek} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden{thisWeekBadge("odd")}</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden{thisWeekBadge("even")}</SmallToggle></div>}/><div><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="text-xl opacity-70">{seasonB}</span><div><h3 className="font-bold text-[#f1e7dc]">Davčův rozvrh</h3><p className="text-xs text-[#9f8d7e]">Sudý = škola, lichý = praxe</p></div></div><div className="flex gap-2"><SmallToggle active={davidWeek==="odd"} onClick={()=>setDavidWeek("odd")}>Lichý týden{thisWeekBadge("odd")}</SmallToggle><SmallToggle active={davidWeek==="even"} onClick={()=>setDavidWeek("even")}>Sudý týden{thisWeekBadge("even")}</SmallToggle></div></div>{davidWeek==="even"?<SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool} weekParity="even"/>:<DavidPracticeSchedule practice={practice} canEdit={currentPerson?.email==="dkudlata9@gmail.com"||isAdminEmail(currentPerson?.email)} onAdd={openPractice} onDelete={deletePractice}/>}</div></div></section>
     {detailPerson&&(()=>{
@@ -2098,9 +2158,10 @@ function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerso
   const isCurrentMonth=year===now.getFullYear()&&month===now.getMonth();
   const dimmed=(s:Shift)=>Boolean(selectedPerson&&s.userId!==selectedPerson.id);
   const renderChips=(date:string,list:Shift[])=>list.map(s=>{const person=peopleById.get(s.userId);if(!person)return null;return <ShiftChip key={s.id} shift={s} person={person} date={date} dim={dimmed(s)} onClick={e=>{e.stopPropagation();setDetailShift(s);}}/>;});
+  const holidayStrip=(date:string)=>{const h=holidayOn(date);return h?<div className={`mb-1.5 truncate rounded-lg border px-2 py-1 text-[11px] font-bold ${h.official?"border-sky-300/35 bg-sky-300/10 text-sky-100":"border-violet-300/35 bg-violet-300/10 text-violet-100"}`} title={h.official?"Státní svátek":undefined}>{h.emoji} {h.name}</div>:null;};
   const birthdayStrips=(date:string)=>(birthdaysByMonthDay.get(date.slice(5))??[]).map(person=><div key={`birthday-${person.id}`} className="mb-1.5 truncate rounded-lg border border-amber-300/35 bg-amber-300/10 px-2 py-1 text-[11px] font-bold text-amber-200">🎂 {person.name} — {birthdayAgeOnDate(person.birthday,date)} let</div>);
   const monthDays=Array.from({length:daysInMonth(year,month)},(_,k)=>k+1).map(day=>`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`);
-  const mobileDays=monthDays.filter(date=>date===today||(shiftsByDate.get(date)?.length??0)>0||(birthdaysByMonthDay.get(date.slice(5))?.length??0)>0);
+  const mobileDays=monthDays.filter(date=>date===today||(shiftsByDate.get(date)?.length??0)>0||(birthdaysByMonthDay.get(date.slice(5))?.length??0)>0||holidayOn(date)!==null);
   return <div><PageHeader eyebrow="KALENDÁŘ" title="Směny" description="Přehled směn všech členů." action={<div className="flex flex-wrap gap-2"><button type="button" onClick={printShifts} className="flex items-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.04] px-4 py-2.5 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]"><Icon name="calendar" size={16}/>Vytisknout rozpis</button><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-4 py-2.5 text-xs font-bold text-white hover:brightness-110"><Icon name="plus" size={16}/>Přidat směnu</button></div>}/>
     <div className="mb-5 flex flex-wrap items-center gap-2">
       <FilterButton active={filter==="all"} onClick={()=>setFilter("all")} label="Všechny"/>
@@ -2129,6 +2190,7 @@ function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerso
           return <div key={date} onClick={()=>{if(!currentPerson)return;openAddShift(date)}} className={`calendar-cell relative min-h-[105px] cursor-pointer border-b border-r border-white/[0.04] p-2 transition hover:bg-white/[0.035] ${weekend?"bg-white/[0.03]":""}`} style={isToday?{background:"color-mix(in srgb, var(--theme) 12%, transparent)",boxShadow:"inset 0 0 0 2px color-mix(in srgb, var(--theme) 55%, transparent)"}:undefined}>
             <div className={isPast?"opacity-60 transition hover:opacity-100":""}>
               <div className={`mb-2 flex h-6 w-6 items-center justify-center rounded-lg text-xs font-bold ${isToday?"theme-primary text-white":"text-slate-400"}`}>{day}</div>
+              {holidayStrip(date)}
               {birthdayStrips(date)}
               {crowded
                 ?<div onClick={e=>{e.stopPropagation();setDayDetail(date);}} className="cursor-pointer rounded-lg bg-white/[0.045] p-2 transition hover:bg-white/[0.09]">
@@ -2143,6 +2205,7 @@ function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerso
       <div className="space-y-4 p-4 md:hidden">
         {mobileDays.length===0?<Empty text="V tomto měsíci nejsou žádné směny."/>:mobileDays.map(date=>{const isToday=date===today;return <div key={date} className={`rounded-2xl border p-3 ${isToday?"border-orange-300/40 bg-orange-400/[0.07]":"border-white/[0.06] bg-white/[0.02]"} ${date<today?"opacity-70":""}`}>
           <div className={`mb-2 text-xs font-black uppercase tracking-wider ${isToday?"text-orange-300":"text-slate-400"}`}>{isToday&&"Dnes · "}{new Date(`${date}T12:00:00`).toLocaleDateString("cs-CZ",{weekday:"long",day:"numeric",month:"numeric"})}</div>
+          {holidayStrip(date)}
           {birthdayStrips(date)}
           <div className="space-y-1.5">{renderChips(date,shiftsByDate.get(date)??[])}</div>
         </div>;})}
@@ -2409,7 +2472,7 @@ function EventsPage({events,people,currentPerson,openCreate,deleteEvent,onEditEv
   </div>
 }
 
-function StatsPage({stats,selectedId,setSelectedId,statsView,setStatsView,statsMonthKey,setStatsMonthKey,statsWeekStart,setStatsWeekStart,statsPeriod}:{stats:{person:Person;shifts:number;hours:number;minutes:number;totalMinutes:number;averageMinutesPerWeek:number;ratingAverage:number|null;ratedShifts:number;morning:number;afternoon:number;intershift:number;night:number;midnight:number;all_day:number;emergency:number;vacation:number;sick:number}[];selectedId:string|null;setSelectedId:(id:string)=>void;statsView:"months"|"weeks";setStatsView:(v:"months"|"weeks")=>void;statsMonthKey:string|null;setStatsMonthKey:(v:string|null)=>void;statsWeekStart:string|null;setStatsWeekStart:(v:string|null)=>void;statsPeriod:{start:string;end:string}|null}){
+function StatsPage({stats,selectedId,setSelectedId,statsView,setStatsView,statsMonthKey,setStatsMonthKey,statsWeekStart,setStatsWeekStart,statsPeriod,members,shifts}:{members:Person[];shifts:Shift[];stats:{person:Person;shifts:number;hours:number;minutes:number;totalMinutes:number;averageMinutesPerWeek:number;ratingAverage:number|null;ratedShifts:number;morning:number;afternoon:number;intershift:number;night:number;midnight:number;all_day:number;emergency:number;vacation:number;sick:number}[];selectedId:string|null;setSelectedId:(id:string)=>void;statsView:"months"|"weeks";setStatsView:(v:"months"|"weeks")=>void;statsMonthKey:string|null;setStatsMonthKey:(v:string|null)=>void;statsWeekStart:string|null;setStatsWeekStart:(v:string|null)=>void;statsPeriod:{start:string;end:string}|null}){
   const selected=stats.find(s=>s.person.id===selectedId)||stats[0];
   const monthParts=statsMonthKey?statsMonthKey.split("-").map(Number):null;
   const monthWeeks=monthParts?getMonthWeeks(monthParts[0],monthParts[1]-1):[];
@@ -2453,6 +2516,7 @@ function StatsPage({stats,selectedId,setSelectedId,statsView,setStatsView,statsM
   return <div>
     <PageHeader eyebrow="ČÍSLA" title="Statistiky" description="Směny a odpracované hodiny všech členů." action={<button type="button" onClick={printStats} className="flex items-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.04] px-4 py-2.5 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]"><Icon name="chart" size={16}/>Vytisknout report</button>}/>
     <AutumnSectionTitle text="Podzimní statistiky"/>
+    <WinterSeasonStats members={members} shifts={shifts}/>
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
       <div className="flex flex-wrap gap-2">
         {statsView==="months"
@@ -2500,7 +2564,7 @@ function AdminMembersPanel({members,setPeople}:{members:Person[];setPeople:React
   return <div className="mt-5 rounded-2xl border border-orange-300/15 bg-orange-400/[0.04] p-4"><div className="flex items-center gap-2 font-semibold"><span>🛡️</span>Správa členů (admin)</div><p className="mt-2 text-xs leading-5 text-slate-500">Uprav jméno a datum narození kohokoli.</p><div className="mt-3 space-y-2">{members.map(p=>{const d=get(p);const changed=d.name!==p.name||d.birthday!==(p.birthday||"");return <div key={p.id} className="flex flex-wrap items-center gap-2"><Avatar person={p} size={30}/><input value={d.name} onChange={e=>setDrafts(prev=>({...prev,[p.id]:{...d,name:e.target.value}}))} className={`${field} min-w-[120px] flex-1`}/><input type="date" value={d.birthday} onChange={e=>setDrafts(prev=>({...prev,[p.id]:{...d,birthday:e.target.value}}))} className={field}/><button type="button" disabled={!changed} onClick={()=>save(p)} className="rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-30">Uložit</button></div>;})}</div>{msg&&<div className="mt-3 text-xs text-emerald-300">{msg}</div>}</div>;
 }
 
-function SettingsPage({currentPerson,setPeople,members,themeColor,setThemeColor,themeColor2,setThemeColor2,themeMode,setThemeMode,animationsEnabled,setAnimationsEnabled}:{members?:Person[];currentPerson:Person|null;setPeople:React.Dispatch<React.SetStateAction<Person[]>>;themeColor:string;setThemeColor:(v:string)=>void;themeColor2:string;setThemeColor2:(v:string)=>void;themeMode:ThemePref;setThemeMode:(v:ThemePref)=>void;animationsEnabled:boolean;setAnimationsEnabled:(v:boolean)=>void}){
+function SettingsPage({currentPerson,setPeople,members,themeColor,setThemeColor,themeColor2,setThemeColor2,themeMode,setThemeMode,animationsEnabled,setAnimationsEnabled,snowLevel,setSnowLevel}:{snowLevel:SnowLevel;setSnowLevel:(v:SnowLevel)=>void;members?:Person[];currentPerson:Person|null;setPeople:React.Dispatch<React.SetStateAction<Person[]>>;themeColor:string;setThemeColor:(v:string)=>void;themeColor2:string;setThemeColor2:(v:string)=>void;themeMode:ThemePref;setThemeMode:(v:ThemePref)=>void;animationsEnabled:boolean;setAnimationsEnabled:(v:boolean)=>void}){
   const [oldPassword,setOldPassword]=useState("");
   const [newPassword,setNewPassword]=useState("");
   const [newAgain,setNewAgain]=useState("");
@@ -2569,7 +2633,7 @@ function SettingsPage({currentPerson,setPeople,members,themeColor,setThemeColor,
       <div className="absolute inset-x-3 bottom-3 rounded-lg bg-black/80 px-2 py-1.5 text-center text-[11px] font-bold text-red-300">Ještě si počkej, 31. 10. se to přepne</div>
     </>}
   </button>;
-})}</div><button type="button" onClick={()=>setAnimationsEnabled(!animationsEnabled)} className="relative mt-4 flex w-full items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-black/15 p-4 text-left"><div className="pointer-events-none absolute -left-3 -bottom-6 text-7xl opacity-[0.08]">{settingsIcons[1]}</div><div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-300/15 bg-orange-400/[0.06] text-2xl">{settingsIcons[0]}</div><div><div className="text-sm font-bold">Animace</div><div className="mt-1 text-xs text-slate-500">Padání sněhu nebo listí a další jemné pohyby.</div></div></div><div className={`relative h-7 w-12 rounded-full p-1 transition ${animationsEnabled?"bg-orange-500":"bg-slate-700"}`}><div className={`h-5 w-5 rounded-full bg-white transition ${animationsEnabled?"translate-x-5":""}`}/></div></button></Card>
+})}</div><button type="button" onClick={()=>setAnimationsEnabled(!animationsEnabled)} className="relative mt-4 flex w-full items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-black/15 p-4 text-left"><div className="pointer-events-none absolute -left-3 -bottom-6 text-7xl opacity-[0.08]">{settingsIcons[1]}</div><div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-300/15 bg-orange-400/[0.06] text-2xl">{settingsIcons[0]}</div><div><div className="text-sm font-bold">Animace</div><div className="mt-1 text-xs text-slate-500">Padání sněhu nebo listí a další jemné pohyby.</div></div></div><div className={`relative h-7 w-12 rounded-full p-1 transition ${animationsEnabled?"bg-orange-500":"bg-slate-700"}`}><div className={`h-5 w-5 rounded-full bg-white transition ${animationsEnabled?"translate-x-5":""}`}/></div></button><div className="mt-4 rounded-2xl border border-white/[0.08] bg-black/15 p-4"><div className="text-sm font-bold">Hustota sněhu</div><div className="mt-1 text-xs text-slate-500">Platí pro zimní motiv. Na slabších telefonech se vloček automaticky ukáže polovina, aby web nezpomaloval.</div><div className="mt-3 grid grid-cols-3 gap-2">{([["light","🌨️","Slabý"],["normal","❄️","Normální"],["blizzard","🌬️","Vánice"]] as [SnowLevel,string,string][]).map(([k,e,l])=><button type="button" key={k} onClick={()=>setSnowLevel(k)} className={`rounded-xl border px-3 py-3 text-xs font-bold transition ${snowLevel===k?"theme-soft theme-border":"border-white/[0.08] bg-black/15 text-slate-400 hover:text-white"}`}><div className="text-xl">{e}</div><div className="mt-1">{l}</div></button>)}</div></div></Card>
     <Card className="p-6 xl:col-span-2"><div className="flex items-center gap-2"><Icon name="lock" size={18}/><h2 className="font-bold">Změna hesla</h2></div><div className="mt-5 grid gap-3 md:grid-cols-3"><PasswordInput label="Staré heslo" value={oldPassword} onChange={setOldPassword}/><PasswordInput label="Nové heslo" value={newPassword} onChange={setNewPassword}/><PasswordInput label="Nové heslo znovu" value={newAgain} onChange={setNewAgain}/></div><button onClick={changePassword} className="theme-primary mt-5 rounded-xl px-5 py-3 text-xs font-bold text-white hover:brightness-110">Změnit heslo</button>{message&&<div className="mt-4 rounded-xl bg-white/[0.03] px-4 py-3 text-xs text-slate-400">{message}</div>}</Card>
   </div></div>
 }
@@ -2700,10 +2764,17 @@ function UpdatesPage(){
       <Card className="relative overflow-hidden p-6"><div className="text-5xl">❄️</div><div className="mt-5 text-3xl font-black">Aktualizace 2.3</div><div className="mt-2 text-sm text-slate-500">Zimní aktualizace</div><div className="mt-6 rounded-2xl border border-orange-300/10 bg-orange-300/[0.04] p-4 text-sm leading-6 text-slate-300">Celý Směnovník dostal zimní kabát: ledové barvy, padající sníh, zasněžené městečko a v prosinci vánoční světýlka.</div></Card>
       <Card className="p-6"><h2 className="font-bold">Co je nového ve verzi 2.3</h2><UpdateList items={UPDATE_ITEMS_23}/></Card>
     </div>
+
+    <div className="my-8 flex items-center gap-3"><div className="h-px flex-1 bg-gradient-to-r from-transparent via-orange-300/20 to-orange-300/40"/><div className="rounded-full border border-orange-300/20 bg-orange-400/[0.06] px-4 py-2 text-xs font-black uppercase tracking-[.18em] text-orange-300">Aktualizace 2.4</div><div className="h-px flex-1 bg-gradient-to-l from-transparent via-orange-300/20 to-orange-300/40"/></div>
+
+    <div className="grid gap-5 lg:grid-cols-[.7fr_1.3fr]">
+      <Card className="relative overflow-hidden p-6"><div className="text-5xl">🎁</div><div className="mt-5 text-3xl font-black">Aktualizace 2.4</div><div className="mt-2 text-sm text-slate-500">Advent a Vánoce</div><div className="mt-6 rounded-2xl border border-orange-300/10 bg-orange-300/[0.04] p-4 text-sm leading-6 text-slate-300">Adventní kalendář s 24 okénky, počasí, vánoční přehled směn, svátky v kalendáři, zimní statistiky a novoroční ohňostroj.</div></Card>
+      <Card className="p-6"><h2 className="font-bold">Co je nového ve verzi 2.4</h2><UpdateList items={UPDATE_ITEMS_24}/></Card>
+    </div>
   </div>;
 }
 
-function UpdateIntroModal({onDone}:{onDone:()=>void}){return <Modal onClose={()=>{}}><div className="text-center"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-400/10 text-3xl">❄️</div><div className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-sky-300">Směnovník {APP_VERSION}</div><h2 className="mt-2 text-2xl font-black">Vítej v aktualizaci {APP_VERSION}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Směnovník se oblékl do zimního. Sníh, ledové barvy a v prosinci i vánoční světýlka.</p></div><div className="mt-6 max-h-[42vh] space-y-2 overflow-y-auto pr-1">{UPDATE_ITEMS_23.map(item=><div key={item} className="flex gap-3 rounded-xl bg-white/[0.025] p-3"><span className="text-sky-300">✓</span><span className="text-sm text-slate-300">{item}</span></div>)}</div><button type="button" onClick={onDone} className="mt-6 w-full rounded-2xl theme-primary py-3.5 text-sm font-black text-white">Super, přečetl jsem si to</button></Modal>}
+function UpdateIntroModal({onDone}:{onDone:()=>void}){return <Modal onClose={()=>{}}><div className="text-center"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-400/10 text-3xl">❄️</div><div className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-sky-300">Směnovník {APP_VERSION}</div><h2 className="mt-2 text-2xl font-black">Vítej v aktualizaci {APP_VERSION}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Adventní kalendář, počasí, Vánoce ve Směnovníku, svátky v kalendáři a mnohem víc zimy.</p></div><div className="mt-6 max-h-[42vh] space-y-2 overflow-y-auto pr-1">{UPDATE_ITEMS_24.map(item=><div key={item} className="flex gap-3 rounded-xl bg-white/[0.025] p-3"><span className="text-sky-300">✓</span><span className="text-sm text-slate-300">{item}</span></div>)}</div><button type="button" onClick={onDone} className="mt-6 w-full rounded-2xl theme-primary py-3.5 text-sm font-black text-white">Super, přečetl jsem si to</button></Modal>}
 
 // Pixelová zvířátka, která občas přeběhnou (nebo přeletí) po obrazovce – každý člen má svoje.
 // Mřížky „kostiček“; písmena odkazují do palety daného zvířete. Všechna zvířata hledí doprava (při chůzi doleva se zrcadlí).
@@ -2718,6 +2789,8 @@ type PixelAnimal = {
   eyeColor: string;
   sit: string[];             // 14×14 – sedí
   sitEyes: [number, number][];
+  winterBody?: string[];     // zimní čepice a šála přes tělo
+  winterSit?: string[];
 };
 
 const CAT_BODY = [
@@ -2853,12 +2926,71 @@ const BIRD_SIT = [
   "....FF..FF....",
 ];
 
+// Zimní oblečení zvířátek: H/h = čepice s bambulí, Z/z = proužkovaná šála
+const WINTER_PIXEL_COLORS: Record<string, string> = { H: "#d62839", h: "#f5f7fb", Z: "#2f7fd6", z: "#e8f1ff" };
+const CAT_WINTER = [
+  ".................HHHHHHh",
+  ".................hhhhhh.",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "................ZzZzZzZ.",
+  "................Zz......",
+  "................zZ......",
+];
+const CAT_WINTER_SIT = [
+  "...HHHHHHHHh..",
+  "...hhhhhhhh...",
+  "..............",
+  "..............",
+  "..............",
+  "..............",
+  "..............",
+  "...ZzZzZzZz...",
+  "..........Zz..",
+  "..........zZ..",
+];
+const DOG_WINTER = [
+  "...............HHHHHHHh.",
+  "...............hhhhhhh..",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "................ZzZzZz..",
+  "................Zz......",
+  "................zZ......",
+];
+const DOG_WINTER_SIT = [
+  "...HHHHHHHHh..",
+  "...hhhhhhhh...",
+  "..............",
+  "..............",
+  "..............",
+  "..............",
+  "...ZzZzZzZz...",
+  "..........Zz..",
+  "..........zZ..",
+];
+const BIRD_WINTER = [
+  "........................",
+  "........................",
+  ".................h......",
+  "...............HHHHH....",
+  "...............hhhhh....",
+];
+const BIRD_WINTER_SIT = [
+  "....HHHHHHh...",
+  "....hhhhhh....",
+];
+
 const PIXEL_ANIMALS: Record<PixelAnimalKey, PixelAnimal> = {
-  cat_orange: { colors: {"W": "#fffaf2", "O": "#e8923a", "o": "#c9712a", "B": "#1e2a44", "S": "#c9ced6", "E": "#2b1b10", "P": "#f4a6b0"}, fly: false, body: CAT_BODY, legsA: CAT_LEGS_A, legsB: CAT_LEGS_B, eyeColor: "#2b1b10", sit: CAT_SIT, sitEyes: [[4, 4], [9, 4]] },
-  cat_black: { colors: {"W": "#2a2a31", "O": "#17171c", "o": "#222228", "B": "#b8344a", "S": "#e6c14a", "E": "#f2d03b", "P": "#7a4a58"}, fly: false, body: CAT_BODY, legsA: CAT_LEGS_A, legsB: CAT_LEGS_B, eyeColor: "#f2d03b", sit: CAT_SIT, sitEyes: [[4, 4], [9, 4]] },
-  dog_black: { colors: {"D": "#1e1b1f", "b": "#b98a55", "M": "#b98a55", "N": "#0b0b0b", "C": "#c0392b", "W": "#efe8dc", "E": "#f1e4c8"}, fly: false, body: DOG_BODY, bodyEyes: [[18, 3], [21, 3]], legsA: DOG_LEGS_A, legsB: DOG_LEGS_B, eyeColor: "#f1e4c8", sit: DOG_SIT, sitEyes: [[5, 3], [8, 3]] },
-  dog_brown: { colors: {"D": "#8a5a3c", "b": "#6e452b", "M": "#a8714c", "N": "#2a1a12", "C": "#d6e23a", "W": "#8a5a3c", "E": "#1a0f08"}, fly: false, body: DOG_BODY, bodyEyes: [[18, 3], [21, 3]], legsA: DOG_LEGS_A, legsB: DOG_LEGS_B, eyeColor: "#1a0f08", sit: DOG_SIT, sitEyes: [[5, 3], [8, 3]] },
-  parrot: { colors: {"R": "#d4202c", "r": "#a8141f", "B": "#2f56c9", "b": "#6d94ee", "K": "#ece6d8", "F": "#a89f93", "E": "#14110f"}, fly: true, body: BIRD_BODY, bodyEyes: [[17, 5]], wingUp: BIRD_WING_UP, wingDown: BIRD_WING_DOWN, eyeColor: "#14110f", sit: BIRD_SIT, sitEyes: [[4, 3], [9, 3]] },
+  cat_orange: { colors: {"W": "#fffaf2", "O": "#e8923a", "o": "#c9712a", "B": "#1e2a44", "S": "#c9ced6", "E": "#2b1b10", "P": "#f4a6b0"}, fly: false, body: CAT_BODY, legsA: CAT_LEGS_A, legsB: CAT_LEGS_B, eyeColor: "#2b1b10", sit: CAT_SIT, sitEyes: [[4, 4], [9, 4]], winterBody: CAT_WINTER, winterSit: CAT_WINTER_SIT },
+  cat_black: { colors: {"W": "#2a2a31", "O": "#17171c", "o": "#222228", "B": "#b8344a", "S": "#e6c14a", "E": "#f2d03b", "P": "#7a4a58"}, fly: false, body: CAT_BODY, legsA: CAT_LEGS_A, legsB: CAT_LEGS_B, eyeColor: "#f2d03b", sit: CAT_SIT, sitEyes: [[4, 4], [9, 4]], winterBody: CAT_WINTER, winterSit: CAT_WINTER_SIT },
+  dog_black: { colors: {"D": "#1e1b1f", "b": "#b98a55", "M": "#b98a55", "N": "#0b0b0b", "C": "#c0392b", "W": "#efe8dc", "E": "#f1e4c8"}, fly: false, body: DOG_BODY, bodyEyes: [[18, 3], [21, 3]], legsA: DOG_LEGS_A, legsB: DOG_LEGS_B, eyeColor: "#f1e4c8", sit: DOG_SIT, sitEyes: [[5, 3], [8, 3]], winterBody: DOG_WINTER, winterSit: DOG_WINTER_SIT },
+  dog_brown: { colors: {"D": "#8a5a3c", "b": "#6e452b", "M": "#a8714c", "N": "#2a1a12", "C": "#d6e23a", "W": "#8a5a3c", "E": "#1a0f08"}, fly: false, body: DOG_BODY, bodyEyes: [[18, 3], [21, 3]], legsA: DOG_LEGS_A, legsB: DOG_LEGS_B, eyeColor: "#1a0f08", sit: DOG_SIT, sitEyes: [[5, 3], [8, 3]], winterBody: DOG_WINTER, winterSit: DOG_WINTER_SIT },
+  parrot: { colors: {"R": "#d4202c", "r": "#a8141f", "B": "#2f56c9", "b": "#6d94ee", "K": "#ece6d8", "F": "#a89f93", "E": "#14110f"}, fly: true, body: BIRD_BODY, bodyEyes: [[17, 5]], wingUp: BIRD_WING_UP, wingDown: BIRD_WING_DOWN, eyeColor: "#14110f", sit: BIRD_SIT, sitEyes: [[4, 3], [9, 3]], winterBody: BIRD_WINTER, winterSit: BIRD_WINTER_SIT },
 };
 
 // Kdo má které zvíře (podle e-mailu přihlášeného člena). Ostatní (např. Admin) dostanou oranžovou kočku.
@@ -2889,7 +3021,7 @@ function pixelRects(rows: string[], y0: number, colors: Record<string, string>) 
   return out;
 }
 
-function WalkingCat({ enabled, animal = "cat_orange" }: { enabled: boolean; animal?: PixelAnimalKey }) {
+function WalkingCat({ enabled, animal = "cat_orange", winter = false }: { enabled: boolean; animal?: PixelAnimalKey; winter?: boolean }) {
   // Zvíře chodí (papoušek létá) pořád: dojde na náhodné místo, chvíli sedí, kouká a mrká, a zase vyrazí.
   // Pohyb je jen přes CSS transform (řeší ho grafika), takže nelaguje; vsedě se nehýbe nic kromě mrknutí.
   const A = PIXEL_ANIMALS[animal] ?? PIXEL_ANIMALS.cat_orange;
@@ -2902,6 +3034,32 @@ function WalkingCat({ enabled, animal = "cat_orange" }: { enabled: boolean; anim
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flyRef = useRef(A.fly);
   flyRef.current = A.fly;
+  // Stopy ve sněhu: pamatujeme si začátek a cíl cesty, abychom věděli, kde zrovna je.
+  const walkRef = useRef({ from: -CAT_W - 20, to: -CAT_W - 20, start: 0, dur: 0 });
+  const modeRef = useRef<"walk" | "sit">("sit");
+  const dirRef = useRef<1 | -1>(1);
+  modeRef.current = mode;
+  dirRef.current = dir;
+  const [prints, setPrints] = useState<{ id: number; x: number; up: boolean; born: number }[]>([]);
+  useEffect(() => {
+    if (!enabled || !winter || A.fly) { setPrints([]); return; }
+    let step = 0;
+    const i = setInterval(() => {
+      const now = performance.now();
+      setPrints(prev => {
+        let next = prev.filter(p => now - p.born < 5000);
+        if (modeRef.current === "walk") {
+          const w = walkRef.current;
+          const t = w.dur > 0 ? Math.min(1, (now - w.start) / (w.dur * 1000)) : 1;
+          const cx = w.from + (w.to - w.from) * t;
+          step++;
+          next = [...next, { id: now, x: cx + CAT_W * (dirRef.current === 1 ? 0.42 : 0.58), up: step % 2 === 0, born: now }];
+        }
+        return next.length === 0 && prev.length === 0 ? prev : next;
+      });
+    }, 280);
+    return () => clearInterval(i);
+  }, [enabled, winter, A.fly]);
 
   const startWalk = () => {
     const vw = window.innerWidth;
@@ -2916,6 +3074,7 @@ function WalkingCat({ enabled, animal = "cat_orange" }: { enabled: boolean; anim
     const speed = flyRef.current ? 120 + Math.random() * 40 : 55 + Math.random() * 20; // px za sekundu (pták letí rychleji)
     setDir(target >= xRef.current ? 1 : -1);
     setDur(distance / speed);
+    walkRef.current = { from: xRef.current, to: target, start: performance.now(), dur: distance / speed };
     setMode("walk");
     xRef.current = target;
     setX(target);
@@ -2954,12 +3113,16 @@ function WalkingCat({ enabled, animal = "cat_orange" }: { enabled: boolean; anim
       .bird-flap-b { animation: catStepB .26s linear infinite; }
       .cat-eyes { animation: catBlink 3.8s linear infinite; }
       .bird-bob { animation: birdBob .8s ease-in-out infinite; }
+      @keyframes pawFade { 0% { opacity: .75; } 100% { opacity: 0; } }
+      .paw-print { position: absolute; width: 6px; height: 3px; border-radius: 9999px; background: rgba(225,238,255,.7); box-shadow: 0 0 3px rgba(200,225,255,.5); animation: pawFade 5s linear forwards; }
     `}</style>
+    {prints.length > 0 && <div className="cat-walker absolute left-0" style={{ width: "100%", height: 70 }}>{prints.map(p => <span key={p.id} className="paw-print" style={{ left: p.x, top: p.up ? 63 : 67 }} />)}</div>}
     <div className="cat-walker absolute left-0" onTransitionEnd={e => { if (e.target === e.currentTarget && e.propertyName === "transform" && mode === "walk") onArrived(); }} style={{ width: CAT_W, height: 70, transform: `translateX(${x}px)`, transition: walking ? `transform ${dur}s linear` : "none" }}>
       {walking
         ? <div className={A.fly ? "bird-bob" : undefined}>
             <svg width={120} height={70} viewBox="0 0 24 14" shapeRendering="crispEdges" style={{ display: "block", transform: dir === -1 ? "scaleX(-1)" : undefined }}>
               <g>{pixelRects(A.body, 0, A.colors)}</g>
+              {winter && A.winterBody && <g>{pixelRects(A.winterBody, 0, WINTER_PIXEL_COLORS)}</g>}
               {A.bodyEyes && <g>{eyeRects(A.bodyEyes)}</g>}
               {A.fly
                 ? <>
@@ -2974,13 +3137,14 @@ function WalkingCat({ enabled, animal = "cat_orange" }: { enabled: boolean; anim
           </div>
         : <svg width={70} height={70} viewBox="0 0 14 14" shapeRendering="crispEdges" style={{ display: "block", margin: "0 auto" }}>
             <g>{pixelRects(A.sit, 0, A.colors)}</g>
+            {winter && A.winterSit && <g>{pixelRects(A.winterSit, 0, WINTER_PIXEL_COLORS)}</g>}
             <g className="cat-eyes">{eyeRects(A.sitEyes)}</g>
           </svg>}
     </div>
   </div>, document.body);
 }
 
-function ShiftSavedToast({animations}:{animations:boolean}){const mode=useContext(ThemeModeCtx);const pair=mode==="halloween"?["🎃","🦇"]:mode==="winter"?["❄️","⛄"]:["🍂","🍁"];return <div className="pointer-events-none fixed inset-0 z-[140] flex items-start justify-center pt-24">{animations&&<div className="absolute inset-0 overflow-hidden">{Array.from({length:8},(_,i)=><span key={i} className="leaf-fall absolute -top-10 text-2xl" style={{left:`${(i*7)%100}%`,animationDelay:`${(i%6)*.12}s`,animationDuration:`${1.6+(i%4)*.25}s`}}>{i%2?pair[0]:pair[1]}</span>)}</div>}<div className="relative rounded-2xl border border-emerald-300/20 bg-[#0b1510]/95 px-5 py-3 shadow-2xl backdrop-blur-xl"><div className="flex items-center gap-3 text-sm font-bold text-emerald-200"><Icon name="check" size={18}/>Směna byla úspěšně uložena</div></div></div>}
+function ShiftSavedToast({animations}:{animations:boolean}){const mode=useContext(ThemeModeCtx);const pair=mode==="halloween"?["🎃","🦇"]:mode==="winter"?["❄️","⛄"]:["🍂","🍁"];if(typeof document==="undefined")return null;return createPortal(<div className="pointer-events-none fixed inset-0 z-[140] flex items-start justify-center pt-24">{animations&&<div className="absolute inset-0 overflow-hidden">{Array.from({length:8},(_,i)=><span key={i} className="leaf-fall absolute -top-10 text-2xl" style={{left:`${(i*7)%100}%`,animationDelay:`${(i%6)*.12}s`,animationDuration:`${1.6+(i%4)*.25}s`}}>{i%2?pair[0]:pair[1]}</span>)}</div>}<div className="relative rounded-2xl border border-emerald-300/20 bg-[#0b1510]/95 px-5 py-3 shadow-2xl backdrop-blur-xl"><div className="flex items-center gap-3 text-sm font-bold text-emerald-200"><Icon name="check" size={18}/>Směna byla úspěšně uložena</div></div></div>,document.body)}
 
 const AUTUMN_FALLING_LEAVES = [
   {left:"5%",delay:"-2s",duration:"17s",size:"text-2xl",leaf:"🍂"},
@@ -3073,24 +3237,36 @@ const HalloweenDecor = memo(function HalloweenDecor({ animations }: { animations
 
 
 // Sněhové vločky – pevně dané hodnoty (stejné na serveru i v prohlížeči), každá padá jinou rychlostí a kývá se do stran.
-const SNOWFLAKES = Array.from({ length: 34 }, (_, i) => {
+type SnowLevel = "light" | "normal" | "blizzard";
+const SNOWFLAKES = Array.from({ length: 70 }, (_, i) => {
   const r = (n: number) => ((Math.sin((i + 1) * n) + 1) / 2);
   const glyph = i % 7 === 0;
   return {
-    left: `${(i * 37 + 11) % 100}%`,
+    leftPct: (i * 37 + 11) % 100,
     size: glyph ? 12 + Math.round(r(3.1) * 8) : 2 + Math.round(r(5.7) * 4),
-    duration: `${12 + Math.round(r(2.3) * 14)}s`,
-    delay: `-${Math.round(r(7.9) * 26)}s`,
-    sway: `${(i % 2 ? -1 : 1) * (14 + Math.round(r(4.4) * 30))}px`,
-    swayDuration: `${3 + Math.round(r(6.2) * 4)}s`,
+    duration: 12 + Math.round(r(2.3) * 14),
+    delay: Math.round(r(7.9) * 26),
+    sway: (i % 2 ? -1 : 1) * (14 + Math.round(r(4.4) * 30)),
+    swayDuration: 3 + Math.round(r(6.2) * 4),
     opacity: (0.35 + r(8.8) * 0.5).toFixed(2),
     blur: !glyph && i % 4 === 0,
     glyph,
   };
 });
 
-const WinterDecor = memo(function WinterDecor({ animations }: { animations: boolean }) {
+const WinterDecor = memo(function WinterDecor({ animations, density = "normal" }: { animations: boolean; density?: SnowLevel }) {
   const festive = isFestiveSeason();
+  // Slabší zařízení (málo jader/paměti, úsporný režim dat, malý displej) dostanou polovinu vloček.
+  const [lowPower, setLowPower] = useState(false);
+  useEffect(() => {
+    try {
+      const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
+      setLowPower((nav.hardwareConcurrency || 8) <= 4 || (nav.deviceMemory ?? 8) <= 4 || Boolean(nav.connection?.saveData) || window.innerWidth < 640);
+    } catch { setLowPower(false); }
+  }, []);
+  const blizzard = density === "blizzard";
+  const base = density === "light" ? 14 : blizzard ? 70 : 34;
+  const flakes = SNOWFLAKES.slice(0, lowPower ? Math.ceil(base / 2) : base);
   return <div className="autumn-decor winter-decor pointer-events-none fixed inset-0 overflow-hidden">
     <div className="absolute -left-24 -top-24 h-[420px] w-[420px] rounded-full bg-sky-400/[0.08] blur-[130px]" />
     <div className="absolute -right-20 top-[14%] h-[360px] w-[360px] rounded-full bg-indigo-500/[0.07] blur-[130px]" />
@@ -3100,8 +3276,8 @@ const WinterDecor = memo(function WinterDecor({ animations }: { animations: bool
     <div className="absolute right-[16%] bottom-[24%] text-5xl opacity-[0.07]">{festive ? "🎄" : "⛄"}</div>
     <div className="absolute right-[6%] top-[30%] text-4xl opacity-[0.05]">❄️</div>
     <Skyline winter festive={festive} animate={animations} />
-    {animations && SNOWFLAKES.map((f, i) => <span key={i} className="snow-fall" style={{ left: f.left, animationDuration: f.duration, animationDelay: f.delay, ["--o" as string]: f.opacity } as React.CSSProperties}>
-      <span className="snow-sway" style={{ animationDuration: f.swayDuration, ["--sway" as string]: f.sway } as React.CSSProperties}>
+    {animations && flakes.map((f, i) => <span key={i} className="snow-fall" style={{ left: `${blizzard ? f.leftPct * 1.4 : f.leftPct}%`, animationName: blizzard ? "snowFallWind" : undefined, animationDuration: `${blizzard ? Math.round(f.duration * 0.55) : f.duration}s`, animationDelay: `-${f.delay}s`, ["--o" as string]: f.opacity } as React.CSSProperties}>
+      <span className="snow-sway" style={{ animationDuration: `${f.swayDuration}s`, ["--sway" as string]: `${blizzard ? f.sway * 1.6 : f.sway}px` } as React.CSSProperties}>
         {f.glyph
           ? <span style={{ display: "block", fontSize: f.size, lineHeight: 1, color: "#fff", textShadow: "0 0 8px rgba(190,225,255,.8)" }}>❄</span>
           : <span className="snow-dot" style={{ width: f.size, height: f.size, filter: f.blur ? "blur(1px)" : undefined }} />}
@@ -3265,4 +3441,519 @@ function ComposeModal({ people, currentPerson, preset, onClose, onSend }: { peop
       <button type="button" onClick={submit} disabled={sending || to.length === 0 || !body.trim()} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white hover:brightness-110 disabled:opacity-50">{sending ? "Odesílám…" : "Odeslat"}</button>
     </div>
   </Modal>;
+}
+
+// ===================== ZIMA: svátky, advent, počasí, Vánoce, Nový rok =====================
+
+type HolidayInfo = { name: string; emoji: string; official: boolean };
+const FIXED_HOLIDAYS: Record<string, HolidayInfo> = {
+  "01-01": { name: "Nový rok", emoji: "🎆", official: true },
+  "05-01": { name: "Svátek práce", emoji: "🌷", official: true },
+  "05-08": { name: "Den vítězství", emoji: "🕊️", official: true },
+  "07-05": { name: "Cyril a Metoděj", emoji: "📜", official: true },
+  "07-06": { name: "Mistr Jan Hus", emoji: "🔥", official: true },
+  "09-28": { name: "Den české státnosti", emoji: "🇨🇿", official: true },
+  "10-28": { name: "Vznik Československa", emoji: "🇨🇿", official: true },
+  "11-17": { name: "Den boje za svobodu", emoji: "🕯️", official: true },
+  "12-24": { name: "Štědrý den", emoji: "🎄", official: true },
+  "12-25": { name: "1. svátek vánoční", emoji: "🎁", official: true },
+  "12-26": { name: "2. svátek vánoční", emoji: "⭐", official: true },
+  "12-31": { name: "Silvestr", emoji: "🥂", official: false },
+};
+
+function easterSunday(y: number) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
+  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(y, month - 1, day, 12);
+}
+
+const HOLIDAY_CACHE = new Map<number, Record<string, HolidayInfo>>();
+function holidaysForYear(y: number) {
+  const cached = HOLIDAY_CACHE.get(y);
+  if (cached) return cached;
+  const map: Record<string, HolidayInfo> = {};
+  for (const [md, info] of Object.entries(FIXED_HOLIDAYS)) map[`${y}-${md}`] = info;
+  const easter = easterSunday(y);
+  map[toLocalDate(addDays(easter, -2))] = { name: "Velký pátek", emoji: "✝️", official: true };
+  map[toLocalDate(addDays(easter, 1))] = { name: "Velikonoční pondělí", emoji: "🐣", official: true };
+  HOLIDAY_CACHE.set(y, map);
+  return map;
+}
+function holidayOn(iso: string): HolidayInfo | null {
+  return holidaysForYear(Number(iso.slice(0, 4)))[iso] ?? null;
+}
+
+// ---------- Advent ----------
+function adventYear(d = new Date()) { return d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear(); }
+function adventPageVisible(d = new Date()) { const m = d.getMonth(), day = d.getDate(); return (m === 10 && day >= 15) || m === 11 || (m === 0 && day <= 6); }
+function adventCountdownVisible(d = new Date()) { const m = d.getMonth(); return m === 10 || (m === 11 && d.getDate() <= 26); }
+function christmasShiftsVisible(d = new Date()) { const m = d.getMonth(); return m === 10 || m === 11 || (m === 0 && d.getDate() <= 1); }
+function adventSundays(y: number) {
+  const eve = new Date(y, 11, 24, 12);
+  const fourth = addDays(eve, -eve.getDay()); // 4. adventní neděle = poslední neděle před Vánoci (nebo přímo 24. 12.)
+  return [3, 2, 1, 0].map(k => toLocalDate(addDays(fourth, -7 * k)));
+}
+function daysBetween(a: string, b: string) { return Math.round((new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime()) / 86400000); }
+function adventDoorDate(y: number, day: number) { return `${y}-12-${String(day).padStart(2, "0")}`; }
+function todaysDoorWaiting(opened: number[], today = isoToday()) {
+  const y = adventYear();
+  if (today.slice(0, 7) !== `${y}-12`) return false;
+  const d = Number(today.slice(8));
+  return d <= 24 && !opened.includes(d);
+}
+
+type AdventKind = "tradice" | "vtip" | "recept" | "výzva" | "kvíz" | "tip" | "fakt" | "svátek";
+type AdventItem = { day: number; emoji: string; kind: AdventKind; title: string; text: string; list?: string[]; question?: string; answer?: string; action?: "message" | "events" };
+const ADVENT_KIND: Record<AdventKind, { label: string; color: string }> = {
+  tradice: { label: "Tradice", color: "#fbbf24" },
+  vtip: { label: "Vtip", color: "#f472b6" },
+  recept: { label: "Recept", color: "#fb923c" },
+  výzva: { label: "Výzva", color: "#4ade80" },
+  kvíz: { label: "Kvíz", color: "#a78bfa" },
+  tip: { label: "Tip", color: "#38bdf8" },
+  fakt: { label: "Zajímavost", color: "#5eead4" },
+  svátek: { label: "Svátek", color: "#f87171" },
+};
+
+const ADVENT_ITEMS: AdventItem[] = [
+  { day: 1, emoji: "🕯️", kind: "tradice", title: "Začíná advent", text: "Slovo advent znamená „příchod“. Na adventním věnci jsou čtyři svíčky a každou adventní neděli se zapálí další.\nNeděle mají i svá jména: železná, bronzová, stříbrná a zlatá. Ta zlatá je poslední před Vánoci." },
+  { day: 2, emoji: "⛄", kind: "vtip", title: "Zimní vtip", text: "„Jak se jmenuje sněhulák v létě?“\n„Louže.“" },
+  { day: 3, emoji: "🍪", kind: "recept", title: "Vanilkové rohlíčky", text: "Klasika, bez které to na talíři s cukrovím nejde. Těsto vypracuj, nech 30 minut odpočinout v lednici, tvoř malé rohlíčky a peč asi 10 minut na 170 °C. Ještě teplé obal v cukru.", list: ["280 g hladké mouky", "210 g změklého másla", "100 g mletých ořechů nebo mandlí", "70 g moučkového cukru", "na obalení moučkový a vanilkový cukr"] },
+  { day: 4, emoji: "🌸", kind: "tradice", title: "Barborka", text: "Dnes má svátek Barbora. Podle tradice se ořízne větvička třešně a dá se do vody v teple. Když vykvete do Štědrého dne, čeká tě v příštím roce štěstí (a podle babiček i svatba).\nZkus to – stačí větvička a váza." },
+  { day: 5, emoji: "😈", kind: "výzva", title: "Mikulášský večer", text: "Dnes večer chodí Mikuláš, anděl a čert. Kdo nezazpívá nebo neřekne básničku, dostane uhlí.\nVýzva: napiš někomu ze Směnovníku básničku – klidně vlastní a klidně špatnou. 😄", action: "message" },
+  { day: 6, emoji: "🎅", kind: "svátek", title: "Svatý Mikuláš", text: "Mikuláš byl biskup z Myry, který podle legend tajně obdarovával chudé. Je patronem dětí a námořníků.\nZ jeho jména a postavy později vznikl i americký Santa Claus." },
+  { day: 7, emoji: "❄️", kind: "kvíz", title: "Kvíz o vločkách", text: "Každá vločka je jiná, ale jedno mají společné.", question: "Kolik ramen má sněhová vločka?", answer: "Šest. Molekuly vody se při mrznutí skládají do šestiúhelníku, a proto má každá vločka šestičetnou souměrnost." },
+  { day: 8, emoji: "💌", kind: "výzva", title: "Udělej někomu radost", text: "Napiš dnes někomu ze Směnovníku pár hezkých slov. Poděkuj za výpomoc se směnou, za svezení nebo jen za to, že je fajn.\nTakové zprávy dělají největší radost, když je nikdo nečeká.", action: "message" },
+  { day: 9, emoji: "🍊", kind: "recept", title: "Zimní punč bez alkoholu", text: "Všechno dej do hrnce a pomalu zahřívej, ale nevař. Nech 10 minut louhovat a sceď. Ideální po studené směně.", list: ["1 l jablečného džusu", "1 pomeranč na kolečka", "2 skořicové tyčinky", "4 hřebíčky a 1 badyán", "med podle chuti"] },
+  { day: 10, emoji: "🥕", kind: "vtip", title: "Sněhulácký vtip", text: "Potkají se dva sněhuláci.\nPrvní povídá: „Necítíš tady nějak mrkev?“" },
+  { day: 11, emoji: "🐷", kind: "kvíz", title: "Štědrovečerní pověra", text: "Jedna z nejznámějších českých tradic.", question: "Proč se na Štědrý den nemá jíst až do večeře?", answer: "Kdo vydrží celý den nejíst, uvidí večer zlaté prasátko. Prý se objeví na zdi nebo na stropě." },
+  { day: 12, emoji: "🎬", kind: "tip", title: "Večer s pohádkou", text: "Prosinec bez pohádky není prosinec. Zkus dnes klasiku Tři oříšky pro Popelku, Mrazíka nebo S čerty nejsou žerty.\nTip: domluvte se a pusťte si ji spolu – přidej to rovnou do Událostí.", action: "events" },
+  { day: 13, emoji: "🕯️", kind: "tradice", title: "Svatá Lucie", text: "„Lucie noci upije a dne nepřidá.“ Podle starého kalendáře býval kolem Lucie nejkratší den v roce.\nVečer chodily „Lucky“ v bílém s bílou tváří a kontrolovaly, jestli je doma uklizeno a nikdo nepřede." },
+  { day: 14, emoji: "⛸️", kind: "výzva", title: "Společná zimní akce", text: "Bruslení, vánoční trhy, svařák nebo procházka zasněženým městem. Najděte si den, kdy máte všichni volno (je vidět na Přehledu), a naplánujte to.", action: "events" },
+  { day: 15, emoji: "🐟", kind: "tradice", title: "Kapří šupina", text: "Šupina z vánočního kapra se dává pod talíř nebo do peněženky. Podle tradice pak po celý rok nebudou chybět peníze.\nVýplata sice přijde tak jako tak, ale jistota je jistota." },
+  { day: 16, emoji: "🎶", kind: "kvíz", title: "Hudební kvíz", text: "„Hej, mistře, vstaň bystře…“", question: "Kdo složil Českou mši vánoční?", answer: "Jakub Jan Ryba, učitel a skladatel z Rožmitálu pod Třemšínem." },
+  { day: 17, emoji: "🛒", kind: "tip", title: "Jak přežít předvánoční směnu", text: "Před Vánoci je všude nejvíc lidí, front i nervů. Pár věcí, které pomáhají:", list: ["Pij hodně vody, i když se nechce", "Pauzu si vezmi celou, vyplatí se", "Pohodlné boty jsou základ", "Úsměv a klid zkrátí frontu víc než spěch", "Po směně si dej něco dobrého, zasloužíš si to"] },
+  { day: 18, emoji: "⭐", kind: "recept", title: "Linecké cukroví", text: "Z těsta udělej kouli, nech hodinu v lednici, vyválej a vykrajuj. Peč asi 8 minut na 170 °C. Po vychladnutí slepuj marmeládou a pocukruj.", list: ["300 g hladké mouky", "200 g másla", "100 g moučkového cukru", "1 žloutek", "nastrouhaná kůra z citronu", "rybízová marmeláda na slepení"] },
+  { day: 19, emoji: "🧶", kind: "vtip", title: "Stromečkový vtip", text: "„Víš, proč vánoční stromky neumí plést?“\n„Pořád jim padají jehlice.“" },
+  { day: 20, emoji: "🎁", kind: "tip", title: "Dárky na poslední chvíli", text: "Nemáš ještě všechno? Tohle se dá stihnout i na poslední chvíli a udělá radost:", list: ["Krabička domácího cukroví", "Poukaz na společný výlet nebo večeři", "Fotka z léta v rámečku", "Horká čokoláda ve sklenici s mašlí", "Vlastnoručně napsané přání"] },
+  { day: 21, emoji: "🌗", kind: "fakt", title: "Zimní slunovrat", text: "Kolem 21. prosince je nejkratší den a nejdelší noc v roce. Od teď se den zase prodlužuje – nejdřív jen o pár minut, ale jaro je na cestě.\nNa ranní směny už brzy nebudeš chodit za úplné tmy." },
+  { day: 22, emoji: "🌲", kind: "kvíz", title: "Odkud je stromeček?", text: "Ozdobený stromek není u nás tak starý, jak by se mohlo zdát.", question: "Kdy byl v Praze poprvé ozdobený vánoční stromek?", answer: "V roce 1812. Postavil ho ředitel Stavovského divadla Jan Karel Liebich pro své přátele. Tradice k nám přišla z Německa." },
+  { day: 23, emoji: "🍎", kind: "tradice", title: "Rozkrojené jablko", text: "Na Štědrý večer rozkroj jablko napříč. Hvězdička uprostřed znamená zdraví a štěstí, křížek se moc nenosí.\nDalší tradice: lodičky ze skořápek se svíčkou. Čí lodička pluje nejdál, ten se podívá do světa." },
+  { day: 24, emoji: "🎄", kind: "svátek", title: "Veselé Vánoce!", text: "Je Štědrý den. Dnes se nedívej na rozpis směn, nepočítej hodiny a neřeš fronty.\nAť je večer klidný, kapr bez kostí, dárky trefené a cukroví nekonečné.\nDěkujeme, že jste letos byli spolu. Krásné Vánoce od Směnovníku! 🎁" },
+];
+
+// Rozmístění okének – schválně přeházené jako u opravdového kalendáře (0 = ozdobná dlaždice)
+const ADVENT_LAYOUT = [14, 3, 20, 8, 1, 17, 11, 23, 0, 5, 19, 9, 2, 16, 22, 7, 12, 4, 21, 10, 15, 6, 18, 13];
+const DOOR_BG = [
+  "linear-gradient(145deg,#b3122e,#6e0a1c)",
+  "linear-gradient(145deg,#1f7a4d,#0d3f27)",
+  "linear-gradient(145deg,#1d4f9c,#0c2556)",
+  "linear-gradient(145deg,#b8860b,#6b4d06)",
+];
+
+function AdventCandles({ lit, animate = true }: { lit: number; animate?: boolean }) {
+  const colors = ["#7c3aed", "#7c3aed", "#ec4899", "#7c3aed"]; // tradičně 3 fialové a 1 růžová (3. neděle)
+  return <svg viewBox="0 0 220 96" className="h-24 w-full max-w-[260px]" aria-hidden="true">
+    <ellipse cx="110" cy="80" rx="96" ry="13" fill="#14532d" />
+    <ellipse cx="110" cy="76" rx="90" ry="10" fill="#166534" />
+    {[24, 50, 82, 112, 142, 170, 196].map((x, i) => <circle key={i} cx={x} cy={i % 2 ? 72 : 82} r="4" fill="#dc2626" />)}
+    {[44, 88, 132, 176].map((x, i) => <g key={x}>
+      <rect x={x - 8} y={34} width="16" height="42" rx="3" fill={colors[i]} opacity={i < lit ? 1 : 0.55} />
+      <rect x={x - 8} y={34} width="5" height="42" rx="2" fill="#fff" opacity=".12" />
+      <line x1={x} y1={34} x2={x} y2={28} stroke="#1f2937" strokeWidth="1.5" />
+      {i < lit && <g className={animate ? "candle-flame" : undefined} style={{ animationDelay: `${i * 0.3}s` }}>
+        <ellipse cx={x} cy={21} rx="9" ry="12" fill="#fde68a" opacity=".25" />
+        <path d={`M${x} 10 C ${x + 6} 18, ${x + 5} 27, ${x} 28 C ${x - 5} 27, ${x - 6} 18, ${x} 10 Z`} fill="#fbbf24" />
+        <path d={`M${x} 17 C ${x + 3} 22, ${x + 2} 26, ${x} 27 C ${x - 2} 26, ${x - 3} 22, ${x} 17 Z`} fill="#fff7d6" />
+      </g>}
+    </g>)}
+  </svg>;
+}
+
+function AdventCountdownCard({ opened, onOpen, animations }: { opened: number[]; onOpen: () => void; animations: boolean }) {
+  const today = isoToday();
+  const y = adventYear();
+  const eve = `${y}-12-24`;
+  const left = daysBetween(today, eve);
+  const sundays = adventSundays(y);
+  const lit = sundays.filter(s => s <= today).length;
+  const nextSunday = sundays.find(s => s > today);
+  const waiting = todaysDoorWaiting(opened, today);
+  const short = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" });
+  const word = left === 1 ? "den" : left >= 2 && left <= 4 ? "dny" : "dní";
+  return <Card className="relative overflow-hidden p-5 sm:p-6">
+    <div className="pointer-events-none absolute -right-4 -top-6 text-7xl opacity-[0.08]">🎄</div>
+    <div className="text-[10px] font-black uppercase tracking-[.18em] text-amber-300/80">Advent</div>
+    {left > 0
+      ? <div className="mt-2 flex items-end gap-2"><span className="text-sm text-slate-300">Do Štědrého dne zbývá</span></div>
+      : null}
+    <div className="mt-1 text-3xl font-black tracking-tight">{left > 0 ? <>{left} <span className="text-lg font-bold text-slate-300">{word}</span></> : left === 0 ? "Dnes je Štědrý den! 🎄" : "Veselé Vánoce! 🎁"}</div>
+    <div className="mt-3 flex justify-center"><AdventCandles lit={lit} animate={animations} /></div>
+    <div className="mt-2 text-center text-xs text-slate-400">
+      {lit > 0 ? `Hoří ${lit === 1 ? "první svíčka" : lit === 2 ? "dvě svíčky" : lit === 3 ? "tři svíčky" : "všechny čtyři svíčky"}.` : "Svíčky ještě nehoří."}
+      {nextSunday && <> {lit === 0 ? "1. adventní neděle" : "Další svíčka"} bude {short(nextSunday)}.</>}
+    </div>
+    <button type="button" onClick={onOpen} className="relative mt-4 flex w-full items-center justify-center gap-2 rounded-xl theme-primary py-3 text-xs font-bold text-white hover:brightness-110">
+      🎁 Adventní kalendář
+      {waiting && <span className="rounded-full bg-red-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white">Nové okénko</span>}
+    </button>
+  </Card>;
+}
+
+function AdventPage({ opened, onOpenDoor, onAction }: { opened: number[]; onOpenDoor: (day: number) => void; onAction: (a: "message" | "events") => void }) {
+  const today = isoToday();
+  const y = adventYear();
+  const [openingDay, setOpeningDay] = useState<number | null>(null);
+  const [shown, setShown] = useState<number | null>(null);
+  const [reveal, setReveal] = useState(false);
+  const status = (d: number): "locked" | "ready" | "open" => today < adventDoorDate(y, d) ? "locked" : opened.includes(d) ? "open" : "ready";
+  const click = (d: number) => {
+    const st = status(d);
+    if (st === "locked" || openingDay !== null) return;
+    setReveal(false);
+    if (st === "ready") {
+      setOpeningDay(d);
+      setTimeout(() => { onOpenDoor(d); setOpeningDay(null); setShown(d); }, 650);
+    } else setShown(d);
+  };
+  const startsIn = daysBetween(today, `${y}-12-01`);
+  const openedCount = opened.filter(d => d >= 1 && d <= 24).length;
+  const available = ADVENT_ITEMS.filter(i => status(i.day) !== "locked").length;
+  const item = shown ? ADVENT_ITEMS.find(i => i.day === shown) ?? null : null;
+
+  const door = (d: number, wide = false) => {
+    const st = status(d);
+    const it = ADVENT_ITEMS.find(i => i.day === d)!;
+    const until = daysBetween(today, adventDoorDate(y, d));
+    return <button type="button" key={d} onClick={() => click(d)} disabled={st === "locked"} aria-label={`Okénko ${d}`}
+      className={`relative ${wide ? "h-40 w-full sm:h-44" : "aspect-square w-full"} rounded-2xl text-left transition ${st === "ready" ? "advent-ready hover:-translate-y-0.5" : st === "open" ? "hover:-translate-y-0.5" : "cursor-not-allowed"}`}
+      style={{ perspective: "700px" }}>
+      <div className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,.06),rgba(0,0,0,.35))] p-2 text-center">
+        <div className={wide ? "text-5xl" : "text-3xl"}>{it.emoji}</div>
+        {st === "open" && <div className={`mt-1 line-clamp-2 font-bold text-slate-200 ${wide ? "text-sm" : "text-[10px]"}`}>{it.title}</div>}
+        {st === "open" && <div className="absolute left-2 top-1.5 text-[10px] font-black text-slate-500">{d}</div>}
+      </div>
+      {st !== "open" && <div className={`absolute inset-0 overflow-hidden rounded-2xl border border-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,.18)] ${openingDay === d ? "advent-door-front-open" : ""} ${st === "locked" ? "opacity-60 saturate-[.6]" : ""}`}
+        style={{ background: DOOR_BG[d % DOOR_BG.length], transformOrigin: "left center", backfaceVisibility: "hidden" }}>
+        <div className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2 bg-[linear-gradient(90deg,#d4a017,#fde68a,#d4a017)] opacity-80" />
+        <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 bg-[linear-gradient(180deg,#d4a017,#fde68a,#d4a017)] opacity-80" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <div className={`flex items-center justify-center rounded-full border-2 border-[#fde68a] bg-[#0b1220]/85 font-black text-white shadow-lg ${wide ? "h-20 w-20 text-4xl" : "h-12 w-12 text-xl sm:h-14 sm:w-14 sm:text-2xl"}`}>{d}</div>
+          {wide && <div className="mt-2 rounded-full bg-black/40 px-3 py-1 text-xs font-black uppercase tracking-[.2em] text-amber-100">Štědrý den</div>}
+        </div>
+        <div className="absolute inset-x-0 bottom-1.5 text-center text-[9px] font-black uppercase tracking-wider text-white/85">{st === "locked" ? (until <= 30 ? `🔒 za ${czechCount(until, "den", "dny", "dní")}` : "🔒") : "Otevři!"}</div>
+      </div>}
+    </button>;
+  };
+
+  return <div>
+    <PageHeader eyebrow="ZIMA" title="Adventní kalendář" description="Každý den jedno okénko. Zmeškaná okénka otevřeš kdykoli později." />
+    <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+      <div className="text-2xl">🎁</div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-bold">{startsIn > 0 ? `Kalendář se otevře 1. prosince – za ${czechCount(startsIn, "den", "dny", "dní")}` : `Otevřeno ${openedCount} z 24 okének`}</div>
+        <div className="mt-1 text-xs text-slate-500">Tradice, recepty, vtipy, kvízy i malé výzvy pro celou partu.</div>
+      </div>
+      {startsIn <= 0 && <div className="h-2 w-full overflow-hidden rounded-full bg-white/[0.06] sm:w-56"><div className="h-full rounded-full bg-[linear-gradient(90deg,#d62839,#fbbf24,#4ade80)]" style={{ width: `${(openedCount / 24) * 100}%` }} /></div>}
+      {startsIn <= 0 && available > openedCount && <span className="rounded-full bg-amber-400/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-200">{available - openedCount} čeká na otevření</span>}
+    </div>
+    <Card className="relative overflow-hidden p-4 sm:p-6">
+      <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-6 sm:gap-3">
+        {ADVENT_LAYOUT.map((d, i) => d === 0
+          ? <div key={`deco-${i}`} className="flex aspect-square w-full flex-col items-center justify-center rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_50%_30%,rgba(255,215,90,.18),transparent_60%),linear-gradient(145deg,#0f1d36,#081020)] text-center"><div className="text-3xl">🎄</div><div className="mt-1 text-[9px] font-black uppercase tracking-[.18em] text-amber-200/70">{y}</div></div>
+          : door(d))}
+      </div>
+      <div className="mt-3">{door(24, true)}</div>
+    </Card>
+
+    {item && <Modal onClose={() => setShown(null)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider" style={{ borderColor: `${ADVENT_KIND[item.kind].color}55`, background: `${ADVENT_KIND[item.kind].color}16`, color: ADVENT_KIND[item.kind].color }}>{ADVENT_KIND[item.kind].label}</span>
+          <div className="mt-2 text-xs font-bold text-slate-500">{item.day}. prosince</div>
+          <h2 className="mt-1 text-2xl font-black">{item.title}</h2>
+        </div>
+        <div className="text-5xl">{item.emoji}</div>
+      </div>
+      <div className="mt-4 space-y-2 text-sm leading-6 text-slate-200">{item.text.split("\n").map((line, i) => <p key={i}>{line}</p>)}</div>
+      {item.list && <ul className="mt-4 space-y-1.5 rounded-2xl border border-white/[0.07] bg-black/20 p-4 text-sm text-slate-200">{item.list.map(li => <li key={li} className="flex gap-2"><span className="theme-text">•</span>{li}</li>)}</ul>}
+      {item.question && <div className="mt-4 rounded-2xl border border-violet-300/20 bg-violet-400/[0.06] p-4">
+        <div className="text-sm font-bold text-violet-100">❓ {item.question}</div>
+        {reveal ? <div className="mt-3 rounded-xl bg-black/20 p-3 text-sm text-slate-200">✅ {item.answer}</div> : <button type="button" onClick={() => setReveal(true)} className="mt-3 rounded-xl border border-violet-300/30 bg-violet-400/10 px-4 py-2 text-xs font-bold text-violet-100 hover:bg-violet-400/20">Ukázat odpověď</button>}
+      </div>}
+      <div className="mt-6 flex flex-wrap justify-end gap-2">
+        {item.action && <button type="button" onClick={() => { setShown(null); onAction(item.action!); }} className="rounded-xl theme-primary px-5 py-3 text-xs font-bold text-white hover:brightness-110">{item.action === "message" ? "✉️ Napsat zprávu" : "📅 Naplánovat událost"}</button>}
+        <button type="button" onClick={() => setShown(null)} className="rounded-xl border border-white/[0.08] px-4 py-3 text-xs font-semibold text-slate-300 hover:bg-white/[0.04]">Zavřít</button>
+      </div>
+    </Modal>}
+  </div>;
+}
+
+// ---------- Počasí (Open-Meteo, bez klíče) ----------
+const WMO: Record<number, [string, string]> = {
+  0: ["Jasno", "☀️"], 1: ["Skoro jasno", "🌤️"], 2: ["Polojasno", "⛅"], 3: ["Zataženo", "☁️"],
+  45: ["Mlha", "🌫️"], 48: ["Mrznoucí mlha", "🌫️"],
+  51: ["Slabé mrholení", "🌦️"], 53: ["Mrholení", "🌦️"], 55: ["Silné mrholení", "🌧️"], 56: ["Mrznoucí mrholení", "🧊"], 57: ["Mrznoucí mrholení", "🧊"],
+  61: ["Slabý déšť", "🌦️"], 63: ["Déšť", "🌧️"], 65: ["Silný déšť", "🌧️"], 66: ["Mrznoucí déšť", "🧊"], 67: ["Mrznoucí déšť", "🧊"],
+  71: ["Slabé sněžení", "🌨️"], 73: ["Sněžení", "🌨️"], 75: ["Husté sněžení", "❄️"], 77: ["Sněhová zrna", "🌨️"],
+  80: ["Přeháňky", "🌦️"], 81: ["Přeháňky", "🌧️"], 82: ["Silné přeháňky", "⛈️"], 85: ["Sněhové přeháňky", "🌨️"], 86: ["Silné sněhové přeháňky", "❄️"],
+  95: ["Bouřka", "⛈️"], 96: ["Bouřka s kroupami", "⛈️"], 99: ["Bouřka s kroupami", "⛈️"],
+};
+const wmo = (code: number) => WMO[code] ?? ["Neznámé", "🌡️"];
+type WeatherDay = { date: string; max: number; min: number; code: number; rain: number };
+type WeatherData = { temp: number; feels: number; wind: number; code: number; days: WeatherDay[]; at: number };
+
+function weatherTip(w: WeatherData) {
+  const snow = [71, 73, 75, 77, 85, 86].includes(w.code);
+  const ice = [48, 56, 57, 66, 67].includes(w.code);
+  const rain = [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(w.code);
+  if (ice) return "Mrznoucí srážky – venku to klouže, jdi opatrně 🧊";
+  if (snow) return "Sněží – na směnu vyraž o pár minut dřív ❄️";
+  if (w.temp <= 0) return "Mrzne – pozor na náledí cestou na směnu 🧤";
+  if (rain) return "Prší – nezapomeň deštník ☔";
+  if (w.wind >= 40) return "Silně fouká – obleč se pořádně 🌬️";
+  if (w.temp <= 5) return "Je chladno – vezmi si čepici a rukavice 🧣";
+  return "Pohodové počasí na cestu do práce 👌";
+}
+
+function WeatherCard() {
+  const [data, setData] = useState<WeatherData | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const cached = sessionStorage.getItem("smenovnik-weather");
+        if (cached) { const c = JSON.parse(cached) as WeatherData; if (Date.now() - c.at < 20 * 60000) { if (active) setData(c); return; } }
+      } catch {}
+      try {
+        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=48.9745&longitude=14.4743&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FPrague&forecast_days=3");
+        if (!res.ok) throw new Error("weather");
+        const j = await res.json();
+        const w: WeatherData = {
+          temp: j.current.temperature_2m, feels: j.current.apparent_temperature, wind: j.current.wind_speed_10m, code: j.current.weather_code,
+          days: (j.daily.time as string[]).map((date, i) => ({ date, max: j.daily.temperature_2m_max[i], min: j.daily.temperature_2m_min[i], code: j.daily.weather_code[i], rain: j.daily.precipitation_probability_max?.[i] ?? 0 })),
+          at: Date.now(),
+        };
+        if (active) { setData(w); setError(false); }
+        try { sessionStorage.setItem("smenovnik-weather", JSON.stringify(w)); } catch {}
+      } catch { if (active) setError(true); }
+    };
+    load();
+    const i = setInterval(load, 30 * 60000);
+    return () => { active = false; clearInterval(i); };
+  }, []);
+  const deg = (n: number) => `${Math.round(n)}°`;
+  const dayName = (iso: string, idx: number) => idx === 0 ? "Dnes" : idx === 1 ? "Zítra" : new Date(`${iso}T12:00:00`).toLocaleDateString("cs-CZ", { weekday: "short" });
+  return <Card className="relative overflow-hidden p-5 sm:p-6">
+    <div className="flex items-center justify-between gap-2">
+      <div><h2 className="font-bold">Počasí</h2><p className="mt-1 text-xs text-slate-400">České Budějovice</p></div>
+      {data && <div className="text-[10px] text-slate-500">aktualizováno {new Date(data.at).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}</div>}
+    </div>
+    {!data ? <div className="mt-6 text-sm text-slate-500">{error ? "Počasí se teď nepodařilo načíst." : "Načítám počasí…"}</div> : <>
+      <div className="mt-4 flex items-center gap-4">
+        <div className="text-6xl leading-none">{wmo(data.code)[1]}</div>
+        <div>
+          <div className="text-4xl font-black tabular-nums">{deg(data.temp)}</div>
+          <div className="text-sm font-semibold text-slate-300">{wmo(data.code)[0]}</div>
+          <div className="mt-0.5 text-xs text-slate-500">pocitově {deg(data.feels)} · vítr {Math.round(data.wind)} km/h</div>
+        </div>
+      </div>
+      <div className="mt-4 rounded-xl border border-white/[0.07] bg-black/20 px-3 py-2.5 text-xs font-semibold text-slate-200">{weatherTip(data)}</div>
+      <div className="mt-3 grid grid-cols-3 gap-2">{data.days.map((d, i) => <div key={d.date} className="rounded-xl border border-white/[0.05] bg-white/[0.025] p-2.5 text-center">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{dayName(d.date, i)}</div>
+        <div className="mt-1 text-2xl">{wmo(d.code)[1]}</div>
+        <div className="mt-1 text-xs font-black tabular-nums">{deg(d.max)} <span className="font-semibold text-slate-500">/ {deg(d.min)}</span></div>
+        {d.rain > 0 && <div className="mt-0.5 text-[10px] text-sky-300/80">💧 {d.rain} %</div>}
+      </div>)}</div>
+    </>}
+  </Card>;
+}
+
+// ---------- Vánoce ve Směnovníku ----------
+function ChristmasShiftsCard({ people, shifts }: { people: Person[]; shifts: Shift[] }) {
+  const y = adventYear();
+  const days = [
+    { iso: `${y}-12-24`, label: "Štědrý den", emoji: "🎄" },
+    { iso: `${y}-12-25`, label: "1. svátek vánoční", emoji: "🎁" },
+    { iso: `${y}-12-26`, label: "2. svátek vánoční", emoji: "⭐" },
+    { iso: `${y}-12-31`, label: "Silvestr", emoji: "🥂" },
+    { iso: `${y + 1}-01-01`, label: "Nový rok", emoji: "🎆" },
+  ];
+  const covers = (sh: Shift, iso: string) => sh.type === "vacation" ? iso >= sh.date && iso <= (sh.endDate || sh.date) : sh.date === iso;
+  return <Card className="relative overflow-hidden p-5 sm:p-6">
+    <div className="pointer-events-none absolute -right-3 -top-5 text-6xl opacity-[0.08]">🎅</div>
+    <h2 className="font-bold">Vánoce ve Směnovníku</h2>
+    <p className="mt-1 text-xs text-slate-400">Kdo má o svátcích směnu a kdo volno</p>
+    <div className="mt-4 space-y-2">{days.map(d => {
+      const entries = people.map(p => ({ p, list: shifts.filter(s => s.userId === p.id && covers(s, d.iso)) }));
+      const working = entries.filter(e => e.list.some(s => s.type !== "vacation" && s.type !== "sick"));
+      const allFree = people.length > 0 && working.length === 0;
+      return <div key={d.iso} className={`rounded-2xl border p-3 ${allFree ? "border-emerald-300/25 bg-emerald-400/[0.05]" : "border-white/[0.06] bg-black/20"}`}>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm font-bold">{d.emoji} {d.label} <span className="ml-1 text-xs font-semibold text-slate-500">{Number(d.iso.slice(8))}. {Number(d.iso.slice(5, 7))}.</span></div>
+          {allFree ? <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300">Společné volno 🎉</span> : <span className="text-[10px] font-bold text-slate-500">{czechCount(working.length, "pracuje", "pracují", "pracuje")}</span>}
+        </div>
+        <div className="flex flex-wrap gap-1.5">{entries.map(({ p, list }) => {
+          const s = list.find(x => x.type !== "vacation" && x.type !== "sick") ?? list[0];
+          const info = s ? shiftInfo[s.type] : null;
+          const label = !s || !info ? "Volno" : s.type === "vacation" || s.type === "sick" || s.type === "all_day" ? info.short : `${info.short} ${s.startTime}–${s.endTime}`;
+          return <div key={p.id} title={p.name} className="flex items-center gap-1.5 rounded-xl border px-2 py-1 text-[11px] font-semibold" style={info ? { borderColor: `${info.color}45`, background: `${info.color}12`, color: info.color } : { borderColor: "rgba(110,231,183,.25)", background: "rgba(110,231,183,.06)", color: "#a7f3d0" }}><Avatar person={p} size={18} />{label}</div>;
+        })}</div>
+      </div>;
+    })}</div>
+  </Card>;
+}
+
+// ---------- Statistiky: zimní sezóna ----------
+function WinterSeasonStats({ members, shifts }: { members: Person[]; shifts: Shift[] }) {
+  const now = new Date();
+  const m = now.getMonth();
+  if (m >= 3 && m <= 9) return null;
+  const y = m >= 10 ? now.getFullYear() : now.getFullYear() - 1;
+  const start = `${y}-12-01`;
+  const end = toLocalDate(new Date(y + 1, 2, 0, 12));
+  const festive = new Set([`${y}-12-24`, `${y}-12-25`, `${y}-12-26`, `${y}-12-31`, `${y + 1}-01-01`]);
+  const notStarted = isoToday() < start;
+  const rows = members.map(p => {
+    let minutes = 0, fest = 0, nights = 0, count = 0;
+    for (const s of shifts) {
+      if (s.userId !== p.id || s.type === "vacation" || s.type === "sick" || s.date < start || s.date > end) continue;
+      count++;
+      minutes += shiftWorkedMinutes(s, p);
+      if (festive.has(s.date)) fest++;
+      if (s.type === "night" || s.type === "midnight") nights++;
+    }
+    return { p, minutes, fest, nights, count };
+  }).sort((a, b) => b.fest - a.fest || b.minutes - a.minutes);
+  const medals = ["🥇", "🥈", "🥉"];
+  return <Card className="relative mb-5 overflow-hidden p-5 sm:p-6">
+    <div className="pointer-events-none absolute -right-4 -top-6 text-7xl opacity-[0.07]">❄️</div>
+    <div className="flex flex-wrap items-end justify-between gap-2">
+      <div><h2 className="font-bold">❄️ Zimní sezóna {y}/{String(y + 1).slice(2)}</h2><p className="mt-1 text-xs text-slate-400">1. 12. – {Number(end.slice(8))}. 2. · kdo přežil nejvíc vánočních směn</p></div>
+      {notStarted && <span className="rounded-full bg-white/[0.06] px-3 py-1 text-[10px] font-bold text-slate-400">Začíná 1. prosince · počítají se i směny zapsané dopředu</span>}
+    </div>
+    <div className="mt-4 space-y-2">{rows.map((r, i) => <div key={r.p.id} className={`flex flex-wrap items-center gap-3 rounded-2xl border p-3 ${i === 0 && r.fest > 0 ? "border-amber-300/30 bg-amber-400/[0.06]" : "border-white/[0.05] bg-black/15"}`}>
+      <div className="w-7 text-center text-lg">{r.count > 0 ? medals[i] ?? `${i + 1}.` : "·"}</div>
+      <Avatar person={r.p} size={34} />
+      <div className="min-w-[90px] flex-1"><div className="text-sm font-bold">{r.p.name}</div>{i === 0 && r.fest > 0 && <div className="text-[10px] font-black uppercase tracking-wider text-amber-300">Vánoční hrdina 🏆</div>}</div>
+      <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
+        <span className="rounded-lg bg-red-500/10 px-2 py-1 text-red-200">🎄 {czechCount(r.fest, "vánoční směna", "vánoční směny", "vánočních směn")}</span>
+        <span className="rounded-lg bg-sky-400/10 px-2 py-1 text-sky-200">⏱ {formatWorkedMinutes(r.minutes)}</span>
+        <span className="rounded-lg bg-violet-400/10 px-2 py-1 text-violet-200">🌙 {r.nights} nočních</span>
+        <span className="rounded-lg bg-white/[0.05] px-2 py-1 text-slate-300">{czechCount(r.count, "směna", "směny", "směn")}</span>
+      </div>
+    </div>)}</div>
+  </Card>;
+}
+
+// ---------- Silvestr a Nový rok ----------
+function Fireworks() {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    let raf = 0, w = 0, h = 0;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const resize = () => { w = window.innerWidth; h = window.innerHeight; c.width = w * dpr; c.height = h * dpr; c.style.width = `${w}px`; c.style.height = `${h}px`; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+    resize();
+    window.addEventListener("resize", resize);
+    type P = { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; rocket?: boolean; ty?: number };
+    const parts: P[] = [];
+    const colors = ["#ff5a5a", "#ffd54a", "#5ee08a", "#5ab8ff", "#d58bff", "#ffffff", "#ff9d3c"];
+    let last = performance.now(), spawn = 0;
+    const tick = (t: number) => {
+      const dt = Math.min(0.05, (t - last) / 1000);
+      last = t;
+      spawn -= dt;
+      if (spawn <= 0) {
+        spawn = 0.4 + Math.random() * 0.6;
+        parts.push({ x: w * (0.15 + Math.random() * 0.7), y: h, vx: (Math.random() - 0.5) * 60, vy: -(h * 0.95 + Math.random() * h * 0.35), life: 0, max: 3, color: colors[Math.floor(Math.random() * colors.length)], rocket: true, ty: h * (0.15 + Math.random() * 0.3) });
+      }
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = "rgba(0,0,0,.22)";
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const p = parts[i];
+        p.life += dt;
+        if (p.rocket) {
+          p.x += p.vx * dt; p.y += p.vy * dt; p.vy += h * 0.6 * dt;
+          if (p.y <= (p.ty ?? 0) || p.vy >= 0 || p.life > p.max) {
+            parts.splice(i, 1);
+            const n = 60 + Math.floor(Math.random() * 40), sp = 110 + Math.random() * 120;
+            for (let k = 0; k < n; k++) {
+              const a = (k / n) * Math.PI * 2, s = sp * (0.6 + Math.random() * 0.5);
+              parts.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0, max: 1.2 + Math.random() * 0.8, color: Math.random() < 0.2 ? "#ffffff" : p.color });
+            }
+            continue;
+          }
+          ctx.fillStyle = "#ffe9b0";
+          ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, Math.PI * 2); ctx.fill();
+          continue;
+        }
+        p.vx *= 0.985; p.vy = p.vy * 0.985 + 90 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+        if (p.life >= p.max) { parts.splice(i, 1); continue; }
+        ctx.globalAlpha = 1 - p.life / p.max;
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+  }, []);
+  return <canvas ref={ref} aria-hidden="true" className="pointer-events-none fixed inset-0" style={{ position: "fixed", inset: 0, zIndex: 130 }} />;
+}
+
+// 31. 12. od 23:00 odpočet, o půlnoci ohňostroj (30 minut), 1. 1. přání do nového roku.
+function NewYearLayer({ animations }: { animations: boolean }) {
+  const [now, setNow] = useState<Date | null>(null);
+  const [closed, setClosed] = useState(false);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout>;
+    const loop = () => {
+      const n = new Date();
+      setNow(n);
+      const fast = (n.getMonth() === 11 && n.getDate() === 31 && n.getHours() >= 23) || (n.getMonth() === 0 && n.getDate() === 1 && n.getHours() === 0);
+      t = setTimeout(loop, fast ? 1000 : 30000);
+    };
+    loop();
+    return () => clearTimeout(t);
+  }, []);
+  const newYear = now ? (now.getMonth() === 0 ? now.getFullYear() : now.getFullYear() + 1) : 0;
+  useEffect(() => {
+    if (!newYear) return;
+    try { setClosed(localStorage.getItem(`smenovnik-ny-${newYear}`) === "closed"); } catch {}
+  }, [newYear]);
+  if (!now || typeof document === "undefined") return null;
+  const m = now.getMonth(), d = now.getDate(), h = now.getHours();
+  const countdown = m === 11 && d === 31 && h >= 23;
+  const party = m === 0 && d === 1 && h === 0 && now.getMinutes() < 30;
+  const greeting = m === 0 && d === 1 && !closed;
+  if (!countdown && !party && !greeting) return null;
+  const secsLeft = countdown ? Math.max(0, Math.ceil((new Date(newYear, 0, 1, 0, 0, 0).getTime() - now.getTime()) / 1000)) : 0;
+  const mm = String(Math.floor(secsLeft / 60)).padStart(2, "0"), ss = String(secsLeft % 60).padStart(2, "0");
+  const close = () => { setClosed(true); try { localStorage.setItem(`smenovnik-ny-${newYear}`, "closed"); } catch {} };
+  return createPortal(<>
+    {party && animations && <Fireworks />}
+    {countdown && secsLeft > 10 && <div className="pointer-events-none fixed bottom-24 right-4 z-[120] rounded-2xl border border-sky-200/25 bg-[#071226]/90 px-4 py-3 text-white shadow-2xl backdrop-blur-md lg:bottom-6" style={{ position: "fixed" }}>
+      <div className="text-[10px] font-black uppercase tracking-[.18em] text-sky-300/80">🥂 Do nového roku</div>
+      <div className="mt-0.5 text-2xl font-black tabular-nums">{mm}:{ss}</div>
+    </div>}
+    {countdown && secsLeft <= 10 && secsLeft > 0 && <div className="pointer-events-none fixed inset-0 z-[120] flex items-center justify-center" style={{ position: "fixed" }}>
+      <div key={secsLeft} className="ny-pop text-[38vw] font-black leading-none text-white sm:text-[220px]" style={{ textShadow: "0 0 40px rgba(120,200,255,.85)" }}>{secsLeft}</div>
+    </div>}
+    {greeting && <div className="fixed left-1/2 top-20 z-[125] w-[min(92vw,460px)] -translate-x-1/2 rounded-3xl border border-amber-200/30 bg-[linear-gradient(145deg,rgba(20,32,60,.97),rgba(8,14,28,.98))] p-6 text-center text-white shadow-[0_30px_80px_rgba(0,0,0,.55)] lg:top-8" style={{ position: "fixed" }}>
+      <div className="text-4xl">🎆🥂🎆</div>
+      <div className="mt-2 text-2xl font-black">Šťastný nový rok {newYear}!</div>
+      <p className="mt-1 text-sm text-slate-300">Ať je v novém roce hodně volna, krátkých front a dobrých směn.</p>
+      <button type="button" onClick={close} className="mt-4 rounded-xl border border-white/15 px-5 py-2.5 text-xs font-bold text-slate-200 hover:bg-white/10">Díky, zavřít</button>
+    </div>}
+  </>, document.body);
 }
