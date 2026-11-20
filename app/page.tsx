@@ -63,7 +63,7 @@ const APP_ACCENT = "#9a4f2c";
 const APP_ACCENT_SECONDARY = "#c47a45";
 const AUTUMN_ACCENT = "#ff7a00";
 const AUTUMN_ACCENT_SECONDARY = "#ffd21f";
-const APP_VERSION = "2.2";
+const APP_VERSION = "2.3";
 const DAVID_AUTH_ID = "0989a80c-eaec-425b-a9e9-6ff0173c678d";
 const TRAM_REVIEW_EMAILS = new Set(["matejuher15@gmail.com"]);
 // ADMIN účet. ZMĚŇ na skutečný e-mail admina (stejný jako v admin-setup.sql a v Supabase Authentication).
@@ -120,19 +120,41 @@ const UPDATE_ITEMS_22 = [
   "Přibyly i drobné opravy a vylepšení pro plynulejší chod Směnovníku.",
 ] as const;
 
+const UPDATE_ITEMS_23 = [
+  "Nový zimní vzhled: ledově modré barvy, ojíněné karty a padající sníh.",
+  "Na spodku obrazovky je zasněžené městečko, v prosinci se na střechách rozsvítí vánoční světýlka.",
+  "Motiv „Automaticky“ teď od listopadu do února zapíná zimu, jinak podzim.",
+  "Kalendář směn, rozvrhy, Přehled i přihlašovací obrazovka mají zimní úpravu.",
+  "Padání sněhu vypneš v Nastavení přepínačem Animace, mezi motivy přepneš tamtéž.",
+] as const;
+
 // Doplňková česká jména, která základní svátkové API nevrací.
 const EXTRA_CZECH_NAME_DAYS: Record<string, string[]> = {
   "09-03": ["Bronislava"],
   "09-06": ["Boleslava"],
 };
 
-type ThemeMode = "autumn" | "halloween" | "classic";
+type ThemeMode = "autumn" | "halloween" | "winter" | "classic";
 type ThemePref = ThemeMode | "auto";
 
+// Automaticky: listopad–únor zima, jinak podzim.
 function autoThemeForDate(d = new Date()): ThemeMode {
   const m = d.getMonth();
-  if (m === 10) return "halloween";
+  if (m >= 10 || m <= 1) return "winter";
   return "autumn";
+}
+
+// Vánoční světýlka: od 1. 12. do Tří králů (6. 1.)
+function isFestiveSeason(d = new Date()) {
+  const m = d.getMonth();
+  return m === 11 || (m === 0 && d.getDate() <= 6);
+}
+
+// Dvojice sezónních ikonek [hlavní, vedlejší]
+function seasonIcons(mode: ThemeMode): [string, string] {
+  if (mode === "halloween") return ["🎃", "🦇"];
+  if (mode === "winter") return ["⛄", "❄️"];
+  return ["🍁", "🍂"];
 }
 
 function halloweenLocked(d = new Date()) { return d.getMonth() < 10; }
@@ -142,10 +164,18 @@ const ThemeModeCtx = createContext<ThemeMode>("autumn");
 const THEME_COLORS: Record<ThemeMode, { c1: string; c2: string }> = {
   autumn: { c1: AUTUMN_ACCENT, c2: AUTUMN_ACCENT_SECONDARY },
   halloween: { c1: "#ff7518", c2: "#9d4edd" },
+  winter: { c1: "#38bdf8", c2: "#e0f2fe" },
   classic: { c1: "", c2: "" },
 };
 
 function themeBackground(mode: ThemeMode, c1: string, c2: string) {
+  if (mode === "winter") return {
+    backgroundColor: "#040913",
+    backgroundImage: `radial-gradient(circle at 12% 6%, rgba(150,210,255,.13), transparent 28%),
+      radial-gradient(circle at 88% 8%, rgba(90,140,255,.10), transparent 27%),
+      radial-gradient(circle at 60% 82%, rgba(40,90,170,.14), transparent 38%),
+      linear-gradient(160deg,#050b17 0%,#081224 30%,#0b1830 55%,#070f1f 80%,#03070f 100%)`,
+  };
   if (mode === "halloween") return {
     backgroundColor: "#07030b",
     backgroundImage: `radial-gradient(circle at 12% 6%, rgba(157,78,221,.16), transparent 28%),
@@ -174,6 +204,7 @@ const SEASON_TITLES: Record<string, string> = {
 };
 function seasonTitle(text: string, mode: ThemeMode) {
   if (mode === "halloween") return SEASON_TITLES[text] ?? text;
+  if (mode === "winter") return text.replace("Podzimní", "Zimní");
   return text;
 }
 
@@ -962,7 +993,7 @@ export default function Home() {
     if (!currentPerson) return;
     const saved = localStorage.getItem(`shift-theme-${currentPerson.email}`);
     const saved2 = localStorage.getItem(`shift-theme2-${currentPerson.email}`);
-    const savedPref = localStorage.getItem(`shift-theme-pref-${currentPerson.email}`) as ThemePref | null;
+    const savedPref = localStorage.getItem(`shift-theme-pref-w-${currentPerson.email}`) as ThemePref | null;
     const savedAnimations = localStorage.getItem(`shift-animations-${currentPerson.email}`);
     setThemeColor(saved || APP_ACCENT);
     setThemeColor2(saved2 || APP_ACCENT_SECONDARY);
@@ -975,7 +1006,7 @@ export default function Home() {
     if (!currentPerson) return;
     localStorage.setItem(`shift-theme-${currentPerson.email}`, themeColor);
     localStorage.setItem(`shift-theme2-${currentPerson.email}`, themeColor2);
-    localStorage.setItem(`shift-theme-pref-${currentPerson.email}`, themePref);
+    localStorage.setItem(`shift-theme-pref-w-${currentPerson.email}`, themePref);
     localStorage.setItem(`shift-animations-${currentPerson.email}`, animationsEnabled ? "on" : "off");
   }, [currentPerson, themeColor, themeColor2, themePref, animationsEnabled]);
 
@@ -1337,7 +1368,7 @@ export default function Home() {
   const activeThemeColor2 = themeMode === "classic" ? themeColor2 : tc.c2;
 
   return <InboxCtx.Provider value={inboxCtx}><ThemeModeCtx.Provider value={themeMode}><main
-    className={`min-h-screen text-white ${themeMode === "classic" ? "classic-theme" : "autumn-theme"} ${themeMode === "halloween" ? "halloween-theme" : ""}`}
+    className={`min-h-screen text-white ${themeMode === "classic" ? "classic-theme" : "autumn-theme"} ${themeMode === "halloween" ? "halloween-theme" : ""} ${themeMode === "winter" ? "winter-theme" : ""}`}
     style={{
       "--theme": activeThemeColor,
       "--theme2": activeThemeColor2,
@@ -1442,9 +1473,132 @@ export default function Home() {
 .halloween-theme .school-plain { background: linear-gradient(145deg,rgba(44,24,62,.9),rgba(20,11,28,.94)) !important; border-color: rgba(157,78,221,.36) !important; }
 .halloween-theme .school-plain:hover { border-color: rgba(255,117,24,.55) !important; }
 
+/* ===== Zimní motiv ===== */
+@keyframes snowFall { 0% { transform: translate3d(0,-12vh,0); opacity: 0; } 8% { opacity: var(--o,.8); } 92% { opacity: var(--o,.8); } 100% { transform: translate3d(0,112vh,0); opacity: 0; } }
+@keyframes snowSway { 0%,100% { transform: translateX(0); } 50% { transform: translateX(var(--sway,26px)); } }
+@keyframes xmasBlink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+@keyframes frostShimmer { 0%,100% { opacity: .35; } 50% { opacity: .7; } }
+.snow-fall { position: absolute; top: 0; animation-name: snowFall; animation-timing-function: linear; animation-iteration-count: infinite; will-change: transform, opacity; }
+.snow-sway { display: block; animation: snowSway ease-in-out infinite; }
+.snow-dot { display: block; border-radius: 9999px; background: #fff; box-shadow: 0 0 6px rgba(255,255,255,.7); }
+.xmas-bulb { animation: xmasBlink 1.6s ease-in-out infinite; }
+.frost-shimmer { animation: frostShimmer 6s ease-in-out infinite; }
+@media (max-width: 768px) { .snow-fall:nth-of-type(3n) { display: none; } }
+@media (prefers-reduced-motion: reduce) { .snow-fall, .snow-sway, .xmas-bulb, .frost-shimmer { animation: none !important; } .snow-fall { display: none; } }
+
+.winter-theme { color-scheme: dark; }
+.winter-theme.autumn-theme::before { background: radial-gradient(circle at 18% -6%,rgba(160,215,255,.14),transparent 34%), radial-gradient(circle at 82% 4%,rgba(120,170,255,.10),transparent 30%), linear-gradient(180deg,rgba(200,230,255,.03) 0%,rgba(0,0,0,.08) 48%,rgba(0,0,0,.30) 100%); }
+.winter-theme.autumn-theme .theme-primary { background: linear-gradient(135deg,#1c64c9 0%,#2f9fe6 55%,#7fd1ff 100%) !important; color:#fff !important; text-shadow: 0 1px 2px rgba(5,25,60,.35); box-shadow: 0 10px 32px rgba(47,159,230,.30), 0 0 42px rgba(160,220,255,.16) !important; }
+.winter-theme.autumn-theme .theme-soft { background: linear-gradient(135deg,rgba(125,200,255,.16),rgba(230,245,255,.06)) !important; color:#d4efff !important; border-color:rgba(143,211,255,.38) !important; }
+.winter-theme.autumn-theme .theme-text { color:#8fd3ff !important; }
+.winter-theme.autumn-theme .theme-border { border-color:rgba(143,211,255,.34) !important; }
+.winter-theme.autumn-theme .app-sidebar { background: linear-gradient(180deg,rgba(10,22,42,.97),rgba(5,11,22,.98)) !important; border-right-color:rgba(160,215,255,.18) !important; box-shadow: 18px 0 60px rgba(5,20,50,.30) !important; }
+.winter-theme.autumn-theme .app-card { background: radial-gradient(circle at 90% 0%,rgba(143,211,255,.09),transparent 36%), linear-gradient(145deg,rgba(14,27,48,.96),rgba(7,13,26,.96)) !important; border-color:rgba(170,215,255,.15) !important; box-shadow: 0 18px 55px rgba(2,10,28,.35), inset 0 1px 0 rgba(255,255,255,.06) !important; }
+.winter-theme.autumn-theme .app-modal { background: radial-gradient(circle at 90% 0%,rgba(143,211,255,.13),transparent 30%), linear-gradient(145deg,#0f1f38,#070d1a) !important; border-color:rgba(170,215,255,.22) !important; box-shadow: 0 30px 90px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.07) !important; }
+.winter-theme.autumn-theme input, .winter-theme.autumn-theme textarea { caret-color:#7fd1ff; }
+.winter-theme.autumn-theme input:focus, .winter-theme.autumn-theme textarea:focus { border-color:rgba(143,211,255,.55) !important; box-shadow:0 0 0 3px rgba(47,159,230,.12) !important; }
+.winter-theme.autumn-theme .october-calendar { background: radial-gradient(circle at 12% 8%,rgba(170,220,255,.12),transparent 22%), radial-gradient(circle at 88% 16%,rgba(80,140,230,.14),transparent 25%), linear-gradient(160deg,rgba(14,28,50,.98),rgba(7,13,26,.98)) !important; border-color:rgba(170,215,255,.26) !important; box-shadow:0 24px 70px rgba(2,12,35,.40),0 0 50px rgba(120,190,255,.06), inset 0 1px 0 rgba(255,255,255,.07) !important; }
+.winter-theme.autumn-theme .october-calendar .calendar-head { background:linear-gradient(90deg,rgba(80,150,240,.18),rgba(220,240,255,.08),rgba(30,70,140,.16)) !important; }
+.winter-theme.autumn-theme .october-calendar .calendar-weekdays { background:rgba(143,211,255,.05) !important; }
+.winter-theme.autumn-theme .october-calendar .calendar-cell { background:linear-gradient(145deg,rgba(170,220,255,.03),rgba(0,0,0,.05)); border-color:rgba(170,215,255,.08) !important; }
+.winter-theme.autumn-theme .october-calendar .calendar-cell:hover { background:linear-gradient(145deg,rgba(143,211,255,.10),rgba(255,255,255,.03)) !important; }
+.winter-theme.autumn-theme .october-calendar .calendar-empty { background:rgba(10,30,60,.18) !important; border-color:rgba(170,215,255,.06) !important; }
+.winter-theme.autumn-theme .autumn-neon-title { color:#cdeeff; text-shadow:0 0 22px rgba(120,200,255,.40); }
+.winter-theme.autumn-theme .autumn-leaf-accent { filter:drop-shadow(0 0 12px rgba(150,215,255,.45)); }
+.winter-theme.autumn-theme .person-card { background: radial-gradient(circle at 90% 0%,rgba(143,211,255,.12),transparent 42%), linear-gradient(145deg,rgba(14,27,48,.96),rgba(7,13,26,.96)) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+.winter-theme.autumn-theme .person-card:hover { box-shadow: 0 12px 36px rgba(80,170,255,.14), inset 0 1px 0 rgba(255,255,255,.08); }
+.winter-theme.autumn-theme .school-card { background: radial-gradient(circle at 92% 0%,rgba(143,211,255,.10),transparent 40%), linear-gradient(145deg,rgba(13,25,45,.97),rgba(6,12,24,.98)) !important; border-color: rgba(120,170,230,.30) !important; box-shadow: 0 18px 50px rgba(2,10,28,.38), inset 0 1px 0 rgba(255,255,255,.05) !important; }
+.winter-theme.autumn-theme .school-head { background: linear-gradient(90deg,rgba(80,150,240,.14),rgba(255,255,255,.02)) !important; border-color: rgba(120,170,230,.24) !important; }
+.winter-theme.autumn-theme .school-plain { background: linear-gradient(145deg,rgba(24,42,70,.90),rgba(11,20,36,.94)) !important; border-color: rgba(110,160,220,.36) !important; }
+.winter-theme.autumn-theme .school-plain:hover { border-color: rgba(143,211,255,.60) !important; }
+.winter-theme [class~="from-orange-400/45"] { background-image: linear-gradient(to right,rgba(143,211,255,.45),rgba(224,244,255,.16),transparent) !important; }
+.winter-theme [class~="from-orange-400/30"] { background-image: linear-gradient(to right,rgba(143,211,255,.30),transparent) !important; }
+.winter-theme [class~="bg-gradient-to-r"][class~="to-orange-300/40"] { background-image: linear-gradient(to right,transparent,rgba(143,211,255,.20),rgba(143,211,255,.40)) !important; }
+.winter-theme [class~="bg-gradient-to-l"][class~="to-orange-300/40"] { background-image: linear-gradient(to left,transparent,rgba(143,211,255,.20),rgba(143,211,255,.40)) !important; }
+.winter-theme [class~="shadow-[0_0_22px_rgba(251,146,60,.28)]"] { box-shadow: 0 0 22px rgba(92,188,245,.32) !important; }
+.winter-theme [class~="shadow-[0_0_45px_rgba(249,115,22,.12)]"] { box-shadow: 0 0 45px rgba(92,188,245,.16) !important; }
+.winter-theme [class~="shadow-[0_8px_22px_rgba(128,58,18,.22)]"] { box-shadow: 0 8px 22px rgba(20,90,170,.25) !important; }
+.winter-theme [class~="bg-[linear-gradient(135deg,rgba(249,115,22,.07),rgba(0,0,0,.2))]"] { background-image: linear-gradient(135deg,rgba(92,188,245,.08),rgba(0,0,0,.2)) !important; }
+.winter-theme [class~="bg-orange-300/10"]{background-color:rgba(143,211,255,0.1)!important}
+.winter-theme [class~="bg-orange-300/[0.025]"]{background-color:rgba(143,211,255,0.025)!important}
+.winter-theme [class~="bg-orange-300/[0.035]"]{background-color:rgba(143,211,255,0.035)!important}
+.winter-theme [class~="bg-orange-300/[0.04]"]{background-color:rgba(143,211,255,0.04)!important}
+.winter-theme [class~="bg-orange-300/[0.06]"]{background-color:rgba(143,211,255,0.06)!important}
+.winter-theme [class~="bg-orange-400"]{background-color:rgba(92,188,245,1)!important}
+.winter-theme [class~="bg-orange-400/10"]{background-color:rgba(92,188,245,0.1)!important}
+.winter-theme [class~="bg-orange-400/15"]{background-color:rgba(92,188,245,0.15)!important}
+.winter-theme [class~="bg-orange-400/20"]{background-color:rgba(92,188,245,0.2)!important}
+.winter-theme [class~="bg-orange-400/[0.04]"]{background-color:rgba(92,188,245,0.04)!important}
+.winter-theme [class~="bg-orange-400/[0.06]"]{background-color:rgba(92,188,245,0.06)!important}
+.winter-theme [class~="bg-orange-400/[0.07]"]{background-color:rgba(92,188,245,0.07)!important}
+.winter-theme [class~="bg-orange-500"]{background-color:rgba(47,159,230,1)!important}
+.winter-theme [class~="bg-orange-500/10"]{background-color:rgba(47,159,230,0.1)!important}
+.winter-theme [class~="bg-orange-500/[0.08]"]{background-color:rgba(47,159,230,0.08)!important}
+.winter-theme [class~="bg-orange-700/[0.055]"]{background-color:rgba(31,111,178,0.055)!important}
+.winter-theme [class~="bg-orange-700/[0.07]"]{background-color:rgba(31,111,178,0.07)!important}
+.winter-theme [class~="bg-orange-900/[0.12]"]{background-color:rgba(18,63,107,0.12)!important}
+.winter-theme [class~="bg-orange-950/[0.12]"]{background-color:rgba(10,37,64,0.12)!important}
+.winter-theme [class~="border-orange-200/20"]{border-color:rgba(191,230,255,0.2)!important}
+.winter-theme [class~="border-orange-200/[0.10]"]{border-color:rgba(191,230,255,0.1)!important}
+.winter-theme [class~="border-orange-200/[0.12]"]{border-color:rgba(191,230,255,0.12)!important}
+.winter-theme [class~="border-orange-300/10"]{border-color:rgba(143,211,255,0.1)!important}
+.winter-theme [class~="border-orange-300/15"]{border-color:rgba(143,211,255,0.15)!important}
+.winter-theme [class~="border-orange-300/20"]{border-color:rgba(143,211,255,0.2)!important}
+.winter-theme [class~="border-orange-300/25"]{border-color:rgba(143,211,255,0.25)!important}
+.winter-theme [class~="border-orange-300/30"]{border-color:rgba(143,211,255,0.3)!important}
+.winter-theme [class~="border-orange-300/40"]{border-color:rgba(143,211,255,0.4)!important}
+.winter-theme [class~="border-orange-300/60"]{border-color:rgba(143,211,255,0.6)!important}
+.winter-theme [class~="border-orange-400/20"]{border-color:rgba(92,188,245,0.2)!important}
+.winter-theme [class~="focus:border-orange-300/40"]:focus{border-color:rgba(143,211,255,0.4)!important}
+.winter-theme [class~="focus:border-orange-300/45"]:focus{border-color:rgba(143,211,255,0.45)!important}
+.winter-theme [class~="focus:ring-orange-400/60"]:focus{--tw-ring-color:rgba(92,188,245,0.6)!important}
+.winter-theme [class~="focus:ring-orange-500/10"]:focus{--tw-ring-color:rgba(47,159,230,0.1)!important}
+.winter-theme .group:hover [class~="group-hover:text-orange-200/60"]{color:rgba(191,230,255,0.6)!important}
+.winter-theme .group:hover [class~="group-hover:text-orange-300"]{color:rgba(143,211,255,1)!important}
+.winter-theme [class~="hover:bg-orange-400/20"]:hover{background-color:rgba(92,188,245,0.2)!important}
+.winter-theme [class~="hover:border-orange-300/25"]:hover{border-color:rgba(143,211,255,0.25)!important}
+.winter-theme [class~="hover:border-orange-300/40"]:hover{border-color:rgba(143,211,255,0.4)!important}
+.winter-theme [class~="hover:text-orange-100"]:hover{color:rgba(224,244,255,1)!important}
+.winter-theme [class~="hover:text-orange-200"]:hover{color:rgba(191,230,255,1)!important}
+.winter-theme [class~="hover:text-orange-200/80"]:hover{color:rgba(191,230,255,0.8)!important}
+.winter-theme [class~="ring-orange-400/80"]{--tw-ring-color:rgba(92,188,245,0.8)!important}
+.winter-theme [class~="text-orange-100"]{color:rgba(224,244,255,1)!important}
+.winter-theme [class~="text-orange-200"]{color:rgba(191,230,255,1)!important}
+.winter-theme [class~="text-orange-200/65"]{color:rgba(191,230,255,0.65)!important}
+.winter-theme [class~="text-orange-200/70"]{color:rgba(191,230,255,0.7)!important}
+.winter-theme [class~="text-orange-200/80"]{color:rgba(191,230,255,0.8)!important}
+.winter-theme [class~="text-orange-300"]{color:rgba(143,211,255,1)!important}
+.winter-theme [class~="text-orange-300/60"]{color:rgba(143,211,255,0.6)!important}
+.winter-theme [class~="text-orange-300/65"]{color:rgba(143,211,255,0.65)!important}
+.winter-theme [class~="text-orange-300/70"]{color:rgba(143,211,255,0.7)!important}
+.winter-theme [class~="text-orange-300/80"]{color:rgba(143,211,255,0.8)!important}
+.winter-theme [class~="text-[#f1e7dc]"]{color:#e6f0fb!important}
+.winter-theme [class~="text-[#9f8d7e]"]{color:#8ea3bb!important}
+.winter-theme [class~="text-[#d8c8b9]"]{color:#c9d9ea!important}
+.winter-theme [class~="text-[#a39080]"]{color:#93a7bf!important}
+.winter-theme [class~="text-[#b9a89a]"]{color:#a9bcd2!important}
+.winter-theme [class~="text-[#b3a090]"]{color:#9fb3cb!important}
+.winter-theme [class~="text-[#4d433c]"]{color:#33445a!important}
+.winter-theme [class~="text-[#efe6dd]"]{color:#e8f1fb!important}
+.winter-theme [class~="text-[#c9b7a7]"]{color:#b9cce0!important}
+.winter-theme [class~="text-[#7f7064]"]{color:#6f8299!important}
+.winter-theme [class~="text-[#8f7d6f]"]{color:#7f93ab!important}
+.winter-theme [class~="text-[#a89687]"]{color:#98abc2!important}
+.winter-theme [class~="text-[#f4ece4]"]{color:#eef5fc!important}
+.winter-theme [class~="border-[#5a4637]/55"]{border-color:rgba(70,105,150,.55)!important}
+.winter-theme [class~="border-[#5a4637]/35"]{border-color:rgba(70,105,150,.35)!important}
+.winter-theme [class~="border-[#6e5a49]/45"]{border-color:rgba(95,135,180,.45)!important}
+.winter-theme [class~="border-[#6e5a49]/40"]{border-color:rgba(95,135,180,.40)!important}
+.winter-theme [class~="hover:border-[#8b735e]/65"]:hover{border-color:rgba(130,185,240,.65)!important}
+.winter-theme [class~="bg-[#2b241f]"]{background-color:#13223a!important}
+.winter-theme [class~="bg-[#8a684d]/[0.08]"]{background-color:rgba(90,150,220,.10)!important}
+.winter-theme [class~="ring-[#16100b]"]{--tw-ring-color:#0a1424!important}
+
+
     `}</style>
     {themeMode === "autumn" && <AutumnDecor animations={animationsEnabled} />}
     {themeMode === "halloween" && <HalloweenDecor animations={animationsEnabled} />}
+    {themeMode === "winter" && <WinterDecor animations={animationsEnabled} />}
     <div className="flex min-h-screen">
       <Sidebar activePage={activePage} setActivePage={setActivePage} currentPerson={currentPerson} onLogout={logout} />
       <section className="w-full lg:ml-[252px]">
@@ -1470,37 +1624,67 @@ export default function Home() {
   </main></ThemeModeCtx.Provider></InboxCtx.Provider>;
 }
 
-function CenterMessage({ icon, text }: { icon: string; text: string }) { return <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0b0806] text-white"><div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(176,91,38,.14),transparent_36%)]"/><div className="pointer-events-none absolute right-[12%] top-[12%] text-6xl opacity-[0.08]">🍁</div><div className="relative text-center"><div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-orange-300/20 bg-orange-500/[0.08] text-orange-200 shadow-[0_0_40px_rgba(177,82,24,.18)]"><Icon name={icon} size={28}/></div><p className="text-sm text-stone-400">{text}</p></div></div>; }
+function CenterMessage({ icon, text }: { icon: string; text: string }) { const w = autoThemeForDate() === "winter"; return <div className={`relative flex min-h-screen items-center justify-center overflow-hidden text-white ${w?"bg-[#040913]":"bg-[#0b0806]"}`}><div className={`pointer-events-none absolute inset-0 ${w?"bg-[radial-gradient(circle_at_center,rgba(120,190,255,.14),transparent_36%)]":"bg-[radial-gradient(circle_at_center,rgba(176,91,38,.14),transparent_36%)]"}`}/><div className="pointer-events-none absolute right-[12%] top-[12%] text-6xl opacity-[0.08]">{w?"❄️":"🍁"}</div><div className="relative text-center"><div className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border ${w?"border-sky-300/20 bg-sky-400/[0.08] text-sky-100 shadow-[0_0_40px_rgba(90,170,255,.20)]":"border-orange-300/20 bg-orange-500/[0.08] text-orange-200 shadow-[0_0_40px_rgba(177,82,24,.18)]"}`}><Icon name={icon} size={28}/></div><p className="text-sm text-stone-400">{text}</p></div></div>; }
+
+// Barvy přihlašovací obrazovky (před přihlášením se řídí jen datem)
+const AUTUMN_LOGIN = {
+  root: "bg-[#0a0806]",
+  bg: "bg-[radial-gradient(circle_at_28%_30%,rgba(193,88,24,.16),transparent_31%),radial-gradient(circle_at_78%_24%,rgba(143,73,42,.13),transparent_30%),linear-gradient(160deg,#080706_0%,#120b07_52%,#080706_100%)]",
+  blob1: "bg-orange-900/[0.12]", blob2: "bg-amber-800/[0.10]", e1: "🍂", e2: "🍁",
+  logo: "border-orange-300/20 bg-[linear-gradient(145deg,rgba(126,60,29,.70),rgba(54,31,20,.75))] text-orange-100 shadow-[0_18px_45px_rgba(88,39,13,.30),0_0_35px_rgba(198,94,28,.12)]",
+  eyebrow: "text-orange-300/65",
+  userCard: "border-orange-200/[0.10] bg-[linear-gradient(145deg,rgba(31,24,19,.84),rgba(13,12,10,.90))] hover:border-orange-300/25 hover:bg-[linear-gradient(145deg,rgba(48,31,20,.92),rgba(18,14,11,.94))] hover:shadow-[0_20px_50px_rgba(86,38,11,.22)]",
+  userHint: "group-hover:text-orange-200/60", adminBtn: "hover:border-orange-300/25 hover:text-orange-200/80",
+  panel: "border-orange-200/[0.12] bg-[linear-gradient(145deg,rgba(31,23,18,.95),rgba(13,11,9,.97))] shadow-[0_30px_80px_rgba(0,0,0,.42),0_0_45px_rgba(112,48,14,.12)]",
+  input: "border-orange-200/[0.10] focus:border-orange-300/40 focus:ring-orange-500/10",
+  button: "border-orange-200/20 bg-[linear-gradient(135deg,#9a4f2c,#c06b35)] text-[#fff6ee] shadow-[0_12px_30px_rgba(119,49,17,.30)]",
+  back: "hover:text-orange-100",
+};
+const WINTER_LOGIN: typeof AUTUMN_LOGIN = {
+  root: "bg-[#040913]",
+  bg: "bg-[radial-gradient(circle_at_28%_30%,rgba(110,180,255,.16),transparent_31%),radial-gradient(circle_at_78%_24%,rgba(160,210,255,.12),transparent_30%),linear-gradient(160deg,#03070f_0%,#0a1630_52%,#03070f_100%)]",
+  blob1: "bg-sky-800/[0.16]", blob2: "bg-indigo-700/[0.12]", e1: "❄️", e2: "⛄",
+  logo: "border-sky-200/25 bg-[linear-gradient(145deg,rgba(40,100,180,.70),rgba(14,32,62,.80))] text-sky-50 shadow-[0_18px_45px_rgba(5,25,70,.35),0_0_35px_rgba(90,170,255,.16)]",
+  eyebrow: "text-sky-300/70",
+  userCard: "border-sky-100/[0.12] bg-[linear-gradient(145deg,rgba(16,30,54,.86),rgba(7,13,26,.92))] hover:border-sky-300/30 hover:bg-[linear-gradient(145deg,rgba(22,44,78,.92),rgba(9,17,33,.94))] hover:shadow-[0_20px_50px_rgba(20,80,170,.25)]",
+  userHint: "group-hover:text-sky-200/70", adminBtn: "hover:border-sky-300/25 hover:text-sky-200/80",
+  panel: "border-sky-100/[0.14] bg-[linear-gradient(145deg,rgba(15,30,55,.95),rgba(6,12,24,.97))] shadow-[0_30px_80px_rgba(0,0,0,.45),0_0_45px_rgba(60,140,240,.14)]",
+  input: "border-sky-100/[0.12] focus:border-sky-300/45 focus:ring-sky-400/10",
+  button: "border-sky-200/25 bg-[linear-gradient(135deg,#1c64c9,#3aa6ee)] text-white shadow-[0_12px_30px_rgba(20,90,190,.35)]",
+  back: "hover:text-sky-100",
+};
 
 function LoginScreen({ selected, setSelected, password, setPassword, error, loading, onLogin }: { selected: (typeof loginUsers)[number] | null; setSelected: (u:(typeof loginUsers)[number] | null)=>void; password:string; setPassword:(v:string)=>void; error:string; loading:boolean; onLogin:()=>void; }) {
-  return <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0a0806] px-5 text-white">
-    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_28%_30%,rgba(193,88,24,.16),transparent_31%),radial-gradient(circle_at_78%_24%,rgba(143,73,42,.13),transparent_30%),linear-gradient(160deg,#080706_0%,#120b07_52%,#080706_100%)]"/>
-    <div className="pointer-events-none absolute -left-20 bottom-[-80px] h-[340px] w-[340px] rounded-full bg-orange-900/[0.12] blur-[120px]"/>
-    <div className="pointer-events-none absolute right-[-70px] top-[-80px] h-[360px] w-[360px] rounded-full bg-amber-800/[0.10] blur-[120px]"/>
-    <div className="pointer-events-none absolute left-[8%] top-[12%] rotate-[-18deg] text-7xl opacity-[0.07]">🍂</div>
-    <div className="pointer-events-none absolute right-[10%] top-[17%] rotate-[15deg] text-8xl opacity-[0.08]">🍁</div>
-    <div className="pointer-events-none absolute bottom-[8%] left-[18%] rotate-[18deg] text-6xl opacity-[0.05]">🍁</div>
+  const w = autoThemeForDate() === "winter";
+  const ui = w ? WINTER_LOGIN : AUTUMN_LOGIN;
+  return <div className={`relative flex min-h-screen items-center justify-center overflow-hidden px-5 text-white ${ui.root}`}>
+    <div className={`pointer-events-none absolute inset-0 ${ui.bg}`}/>
+    <div className={`pointer-events-none absolute -left-20 bottom-[-80px] h-[340px] w-[340px] rounded-full blur-[120px] ${ui.blob1}`}/>
+    <div className={`pointer-events-none absolute right-[-70px] top-[-80px] h-[360px] w-[360px] rounded-full blur-[120px] ${ui.blob2}`}/>
+    <div className="pointer-events-none absolute left-[8%] top-[12%] rotate-[-18deg] text-7xl opacity-[0.07]">{ui.e1}</div>
+    <div className="pointer-events-none absolute right-[10%] top-[17%] rotate-[15deg] text-8xl opacity-[0.08]">{ui.e2}</div>
+    <div className="pointer-events-none absolute bottom-[8%] left-[18%] rotate-[18deg] text-6xl opacity-[0.05]">{ui.e2}</div>
     <div className="relative z-10 w-full max-w-[920px]">
       <div className="mb-10 text-center">
-        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-[22px] border border-orange-300/20 bg-[linear-gradient(145deg,rgba(126,60,29,.70),rgba(54,31,20,.75))] text-orange-100 shadow-[0_18px_45px_rgba(88,39,13,.30),0_0_35px_rgba(198,94,28,.12)]"><Icon name="calendar" size={31}/></div>
-        <div className="mb-2 text-[10px] font-black uppercase tracking-[.28em] text-orange-300/65">Směnovník 2.1</div>
+        <div className={`mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-[22px] border ${ui.logo}`}><Icon name="calendar" size={31}/></div>
+        <div className={`mb-2 text-[10px] font-black uppercase tracking-[.28em] ${ui.eyebrow}`}>Směnovník {APP_VERSION}</div>
         <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Kdo jsi?</h1>
         <p className="mt-2 text-sm text-stone-500">Vyber svůj účet a přihlas se</p>
       </div>
-      {!selected ? <><div className="flex flex-wrap justify-center gap-3">{loginUsers.filter(u=>!isAdminEmail(u.email)).map((u,index)=><button key={u.email} onClick={()=>setSelected(u)} className="group relative w-[calc(50%-6px)] overflow-hidden rounded-3xl sm:w-[calc(33.333%-8px)] xl:w-[calc(20%-10px)] border border-orange-200/[0.10] bg-[linear-gradient(145deg,rgba(31,24,19,.84),rgba(13,12,10,.90))] p-5 text-left shadow-[0_18px_45px_rgba(0,0,0,.18)] transition duration-300 hover:-translate-y-1 hover:border-orange-300/25 hover:bg-[linear-gradient(145deg,rgba(48,31,20,.92),rgba(18,14,11,.94))] hover:shadow-[0_20px_50px_rgba(86,38,11,.22)]">
-        <div className="pointer-events-none absolute -right-8 -top-8 text-5xl opacity-0 transition group-hover:opacity-[0.07]">{index%2?"🍂":"🍁"}</div>
+      {!selected ? <><div className="flex flex-wrap justify-center gap-3">{loginUsers.filter(u=>!isAdminEmail(u.email)).map((u,index)=><button key={u.email} onClick={()=>setSelected(u)} className={`group relative w-[calc(50%-6px)] overflow-hidden rounded-3xl sm:w-[calc(33.333%-8px)] xl:w-[calc(20%-10px)] border p-5 text-left shadow-[0_18px_45px_rgba(0,0,0,.18)] transition duration-300 hover:-translate-y-1 ${ui.userCard}`}>
+        <div className="pointer-events-none absolute -right-8 -top-8 text-5xl opacity-0 transition group-hover:opacity-[0.07]">{index%2?ui.e1:ui.e2}</div>
         <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/[0.08] font-black text-white shadow-[0_10px_24px_rgba(0,0,0,.22)]" style={{background:`linear-gradient(145deg,${u.color}dd,${u.color}88)`}}>{u.avatar}</div>
         <div className="font-bold text-stone-100">{u.name}</div>
-        <div className="mt-1 text-xs text-stone-600 transition group-hover:text-orange-200/60">Přihlásit se</div>
+        <div className={`mt-1 text-xs text-stone-600 transition ${ui.userHint}`}>Přihlásit se</div>
       </button>)}</div>
-        <div className="mt-8 flex justify-center">{loginUsers.filter(u=>isAdminEmail(u.email)).map(u=><button key={u.email} onClick={()=>setSelected(u)} className="flex items-center gap-2 rounded-full border border-white/[0.07] px-4 py-2 text-xs text-stone-600 transition hover:border-orange-300/25 hover:text-orange-200/80"><Icon name="lock" size={13}/>Přihlášení správce</button>)}</div></>
-      : <div className="mx-auto max-w-[420px] rounded-[30px] border border-orange-200/[0.12] bg-[linear-gradient(145deg,rgba(31,23,18,.95),rgba(13,11,9,.97))] p-7 shadow-[0_30px_80px_rgba(0,0,0,.42),0_0_45px_rgba(112,48,14,.12)]">
+        <div className="mt-8 flex justify-center">{loginUsers.filter(u=>isAdminEmail(u.email)).map(u=><button key={u.email} onClick={()=>setSelected(u)} className={`flex items-center gap-2 rounded-full border border-white/[0.07] px-4 py-2 text-xs text-stone-600 transition ${ui.adminBtn}`}><Icon name="lock" size={13}/>Přihlášení správce</button>)}</div></>
+      : <div className={`mx-auto max-w-[420px] rounded-[30px] border p-7 ${ui.panel}`}>
         <div className="mb-6 flex items-center gap-4"><div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.08] font-bold text-white" style={{background:`linear-gradient(145deg,${selected.color}dd,${selected.color}88)`}}>{selected.avatar}</div><div><div className="font-bold">{selected.name}</div><div className="text-xs text-stone-500">{selected.email}</div></div></div>
         <label className="mb-2 block text-xs text-stone-400">Heslo</label>
-        <input autoFocus type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")onLogin();}} className="w-full rounded-2xl border border-orange-200/[0.10] bg-black/25 px-4 py-3.5 text-sm outline-none transition focus:border-orange-300/40 focus:ring-2 focus:ring-orange-500/10" placeholder="Zadej heslo"/>
+        <input autoFocus type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")onLogin();}} className={`w-full rounded-2xl border bg-black/25 px-4 py-3.5 text-sm outline-none transition focus:ring-2 ${ui.input}`} placeholder="Zadej heslo"/>
         {error&&<div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-xs text-red-400">{error}</div>}
-        <button onClick={onLogin} disabled={loading||!password} className="mt-5 w-full rounded-2xl border border-orange-200/20 bg-[linear-gradient(135deg,#9a4f2c,#c06b35)] py-3.5 text-sm font-black text-[#fff6ee] shadow-[0_12px_30px_rgba(119,49,17,.30)] transition hover:brightness-110 disabled:opacity-50">{loading?"Přihlašuji…":"Přihlásit se"}</button>
-        <button onClick={()=>{setSelected(null);setPassword("");}} className="mt-3 flex w-full items-center justify-center gap-1 py-2 text-xs text-stone-500 hover:text-orange-100"><Icon name="left" size={14}/> Změnit uživatele</button>
+        <button onClick={onLogin} disabled={loading||!password} className={`mt-5 w-full rounded-2xl border py-3.5 text-sm font-black transition hover:brightness-110 disabled:opacity-50 ${ui.button}`}>{loading?"Přihlašuji…":"Přihlásit se"}</button>
+        <button onClick={()=>{setSelected(null);setPassword("");}} className={`mt-3 flex w-full items-center justify-center gap-1 py-2 text-xs text-stone-500 ${ui.back}`}><Icon name="left" size={14}/> Změnit uživatele</button>
       </div>}
     </div>
   </div>;
@@ -1606,7 +1790,9 @@ function dailyBoost(person: Person | null) {
 
 function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift, tibiWeek, setTibiWeek, tibiOdd, tibiEven, davidSchool, davidWeek, setDavidWeek, practice, openPractice, deletePractice }: { people:Person[]; shifts:Shift[]; currentPerson:Person|null; events:EventItem[]; nameDay:string; openAddShift:(date?:string)=>void; tibiWeek:"odd"|"even"; setTibiWeek:(v:"odd"|"even")=>void; tibiOdd:WeekSchedule;tibiEven:WeekSchedule;davidSchool:WeekSchedule;davidWeek:"odd"|"even";setDavidWeek:(v:"odd"|"even")=>void;practice:PracticeItem[];openPractice:(date?:string)=>void;deletePractice:(id:string)=>Promise<void>; }) {
   const [clock,setClock]=useState<number|null>(null);
-  const hwO=useContext(ThemeModeCtx)==="halloween";
+  const seasonMode=useContext(ThemeModeCtx);
+  const hwO=seasonMode==="halloween";
+  const [seasonA,seasonB]=seasonIcons(seasonMode);
   const [detailPerson,setDetailPerson]=useState<Person|null>(null);
   useEffect(()=>{setClock(Date.now());const interval=setInterval(()=>setClock(Date.now()),60000);return()=>clearInterval(interval);},[]);
   const today=isoToday();
@@ -1671,9 +1857,9 @@ function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift
     return null;
   },[people.length,shifts,today]);
   return <div><PageHeader eyebrow="SMĚNOVNÍK" title="Přehled" description="Všechno důležité na jednom místě." action={<div className="w-full rounded-2xl border border-orange-400/20 bg-black/20 px-5 py-3.5 backdrop-blur-sm sm:w-auto sm:min-w-[340px] xl:min-w-[390px]"><div className="text-[9px] font-bold uppercase tracking-[.18em] text-orange-300/70">Dnešní povzbuzení</div><div className="mt-1.5 text-sm font-semibold text-slate-200">{dailyBoost(currentPerson)}</div></div>}/><AutumnSectionTitle text="Podzimní přehled"/>
-    <section className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{people.map(p=>{const todayShifts=todayShiftsByUser.get(p.id)??[];return <div key={p.id} role="button" tabIndex={0} aria-label={`Otevřít informace o směnách: ${p.name}`} onClick={()=>setDetailPerson(p)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setDetailPerson(p);}}} className="person-card group relative flex cursor-pointer flex-col overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(31,24,19,.96),rgba(14,12,10,.94))] p-5 text-left transition hover:-translate-y-1 hover:bg-white/[0.03] focus:outline-none focus:ring-2 focus:ring-orange-400/60" style={{borderColor:`${p.color}38`}}><div className="autumn-only season-title pointer-events-none absolute right-3 top-2 text-2xl opacity-20">{hwO?"🦇":"🍂"}</div><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div className="min-w-0 flex-1"><div className="text-[15px] font-black">{p.name}</div></div></div><div className="relative mt-5 flex-1 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{todayShifts.length>0?<div className="space-y-2">{todayShifts.map(s=><div key={s.id} className="rounded-xl border px-3 py-2" style={{borderColor:`${shiftInfo[s.type].color}38`,background:`${shiftInfo[s.type].color}0d`}}><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-base font-black">{shiftTimeLabel(s)}</div></div>)}</div>:<div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div>}</div><div className="relative mt-3 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[.12em] text-slate-600 transition group-hover:text-orange-300"><span>Detail</span><Icon name="right" size={14}/></div></div>})}</section>
-    <section className="mb-8 grid gap-5 xl:grid-cols-[1.75fr_.95fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-400">Seřazené podle toho, komu začíná směna nejdřív</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcomingGroups.map(group=><div key={group.key} className="space-y-2"><div className="px-1 pt-2 text-[11px] font-black uppercase tracking-[.14em] text-orange-300/80">{dayHeading(group.key,today)}</div>{group.items.map(s=>{const p=peopleById.get(s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="mt-1 text-xs font-extrabold theme-text">{shiftCountdown(s,clock)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-400">{shiftTimeLabel(s)}</div></div></div>})}</div>)}</div></Card><Card className="relative overflow-hidden p-6"><div className="pointer-events-none absolute -right-3 -top-4 text-6xl opacity-10">{hwO?"🎃":"🍁"}</div><h2 className="font-bold">Informace</h2><p className="mt-1 text-xs text-slate-400">Dnešní rychlý přehled</p><div className="relative mx-auto mt-6 grid max-w-[390px] grid-cols-2 gap-3"><InfoBubble label="Směn tento měsíc" value={String(monthShiftCount)} icon="calendar"/><InfoBubble label="Směn dnes" value={String(todayShiftCount)} icon="clock"/><div className="col-span-2 mx-auto -my-1 flex h-28 w-28 flex-col items-center justify-center rounded-full border border-orange-300/25 bg-orange-500/10 text-center shadow-[0_0_45px_rgba(249,115,22,.12)]"><div className="text-2xl">{hwO?"🎃":"🍂"}</div><div className="mt-1 text-sm font-black capitalize text-orange-200">{dateInfo.weekday}</div><div className="text-xs font-semibold text-orange-300/70">{dateInfo.date}</div></div><InfoBubble label="Událostí dnes" value={String(todayEventCount)} icon="event"/><InfoBubble label="Dnešní svátek" value={nameDay||"Načítám…"} icon="users" small/><div className="col-span-2"><InfoBubble label="Příští společné volno" icon="calendar" small value={commonFreeDay?dayHeading(commonFreeDay,today):"Zatím žádné v rozpisu"}/></div><div className="col-span-2"><InfoBubble label="Nejbližší událost" icon="event" small value={nextEvent?<><div className="truncate">{nextEvent.title}</div><div className="mt-1 text-xs font-semibold text-orange-200/80">{dateCountdown(nextEvent.date,today)} · {formatDate(nextEvent.date)}{nextEvent.time?` · ${nextEvent.time}`:""}</div></>:"Žádná naplánovaná"}/></div><div className="col-span-2"><InfoBubble label="Nejbližší narozeniny" icon="users" small value={nextBirthday?<><div className="truncate">🎂 {nextBirthday.person.name}</div><div className="mt-1 text-xs font-semibold text-orange-200/80">{dateCountdown(nextBirthday.date,today)} · {new Date(`${nextBirthday.date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})} · {nextBirthday.age}. narozeniny</div></>:"Zatím nikdo nemá zadané datum narození"}/></div></div></Card></section>
-    <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy na jednom místě.</p></div><div className="grid gap-6"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} weekParity={tibiWeek} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden{thisWeekBadge("odd")}</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden{thisWeekBadge("even")}</SmallToggle></div>}/><div><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="text-xl opacity-70">{hwO?"🦇":"🍂"}</span><div><h3 className="font-bold text-[#f1e7dc]">Davčův rozvrh</h3><p className="text-xs text-[#9f8d7e]">Sudý = škola, lichý = praxe</p></div></div><div className="flex gap-2"><SmallToggle active={davidWeek==="odd"} onClick={()=>setDavidWeek("odd")}>Lichý týden{thisWeekBadge("odd")}</SmallToggle><SmallToggle active={davidWeek==="even"} onClick={()=>setDavidWeek("even")}>Sudý týden{thisWeekBadge("even")}</SmallToggle></div></div>{davidWeek==="even"?<SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool} weekParity="even"/>:<DavidPracticeSchedule practice={practice} canEdit={currentPerson?.email==="dkudlata9@gmail.com"||isAdminEmail(currentPerson?.email)} onAdd={openPractice} onDelete={deletePractice}/>}</div></div></section>
+    <section className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{people.map(p=>{const todayShifts=todayShiftsByUser.get(p.id)??[];return <div key={p.id} role="button" tabIndex={0} aria-label={`Otevřít informace o směnách: ${p.name}`} onClick={()=>setDetailPerson(p)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setDetailPerson(p);}}} className="person-card group relative flex cursor-pointer flex-col overflow-hidden rounded-3xl border bg-[linear-gradient(145deg,rgba(31,24,19,.96),rgba(14,12,10,.94))] p-5 text-left transition hover:-translate-y-1 hover:bg-white/[0.03] focus:outline-none focus:ring-2 focus:ring-orange-400/60" style={{borderColor:`${p.color}38`}}><div className="autumn-only season-title pointer-events-none absolute right-3 top-2 text-2xl opacity-20">{seasonB}</div><div className="relative flex items-center gap-4"><Avatar person={p} size={54}/><div className="min-w-0 flex-1"><div className="text-[15px] font-black">{p.name}</div></div></div><div className="relative mt-5 flex-1 rounded-2xl border border-white/[0.05] bg-black/20 p-4">{todayShifts.length>0?<div className="space-y-2">{todayShifts.map(s=><div key={s.id} className="rounded-xl border px-3 py-2" style={{borderColor:`${shiftInfo[s.type].color}38`,background:`${shiftInfo[s.type].color}0d`}}><div className="flex items-center gap-2 text-sm font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={16}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-base font-black">{shiftTimeLabel(s)}</div></div>)}</div>:<div className="text-sm font-semibold text-slate-300">Dnes nemá směnu</div>}</div><div className="relative mt-3 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[.12em] text-slate-600 transition group-hover:text-orange-300"><span>Detail</span><Icon name="right" size={14}/></div></div>})}</section>
+    <section className="mb-8 grid gap-5 xl:grid-cols-[1.75fr_.95fr]"><Card className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="font-bold">Nejbližší směny</h2><p className="mt-1 text-xs text-slate-400">Seřazené podle toho, komu začíná směna nejdřív</p></div><button onClick={()=>openAddShift()} className="flex items-center gap-2 rounded-xl theme-primary px-3 py-2 text-xs font-bold text-white"><Icon name="plus" size={15}/>Přidat</button></div><div className="space-y-2">{upcoming.length===0?<Empty text="Zatím nejsou žádné směny."/>:upcomingGroups.map(group=><div key={group.key} className="space-y-2"><div className="px-1 pt-2 text-[11px] font-black uppercase tracking-[.14em] text-orange-300/80">{dayHeading(group.key,today)}</div>{group.items.map(s=>{const p=peopleById.get(s.userId);if(!p)return null;return <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-black/20 p-3"><Avatar person={p} size={38}/><div className="flex-1"><div className="text-sm font-semibold">{p.name}</div><div className="mt-1 text-xs font-extrabold theme-text">{shiftCountdown(s,clock)}</div></div><div className="text-right"><div className="flex items-center justify-end gap-1 text-xs font-semibold" style={{color:shiftInfo[s.type].color}}><Icon name={shiftInfo[s.type].icon} size={13}/>{shiftInfo[s.type].short}</div><div className="mt-1 text-xs text-slate-400">{shiftTimeLabel(s)}</div></div></div>})}</div>)}</div></Card><Card className="relative overflow-hidden p-6"><div className="pointer-events-none absolute -right-3 -top-4 text-6xl opacity-10">{seasonA}</div><h2 className="font-bold">Informace</h2><p className="mt-1 text-xs text-slate-400">Dnešní rychlý přehled</p><div className="relative mx-auto mt-6 grid max-w-[390px] grid-cols-2 gap-3"><InfoBubble label="Směn tento měsíc" value={String(monthShiftCount)} icon="calendar"/><InfoBubble label="Směn dnes" value={String(todayShiftCount)} icon="clock"/><div className="col-span-2 mx-auto -my-1 flex h-28 w-28 flex-col items-center justify-center rounded-full border border-orange-300/25 bg-orange-500/10 text-center shadow-[0_0_45px_rgba(249,115,22,.12)]"><div className="text-2xl">{hwO?"🎃":seasonMode==="winter"?(isFestiveSeason()?"🎄":"❄️"):"🍂"}</div><div className="mt-1 text-sm font-black capitalize text-orange-200">{dateInfo.weekday}</div><div className="text-xs font-semibold text-orange-300/70">{dateInfo.date}</div></div><InfoBubble label="Událostí dnes" value={String(todayEventCount)} icon="event"/><InfoBubble label="Dnešní svátek" value={nameDay||"Načítám…"} icon="users" small/><div className="col-span-2"><InfoBubble label="Příští společné volno" icon="calendar" small value={commonFreeDay?dayHeading(commonFreeDay,today):"Zatím žádné v rozpisu"}/></div><div className="col-span-2"><InfoBubble label="Nejbližší událost" icon="event" small value={nextEvent?<><div className="truncate">{nextEvent.title}</div><div className="mt-1 text-xs font-semibold text-orange-200/80">{dateCountdown(nextEvent.date,today)} · {formatDate(nextEvent.date)}{nextEvent.time?` · ${nextEvent.time}`:""}</div></>:"Žádná naplánovaná"}/></div><div className="col-span-2"><InfoBubble label="Nejbližší narozeniny" icon="users" small value={nextBirthday?<><div className="truncate">🎂 {nextBirthday.person.name}</div><div className="mt-1 text-xs font-semibold text-orange-200/80">{dateCountdown(nextBirthday.date,today)} · {new Date(`${nextBirthday.date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})} · {nextBirthday.age}. narozeniny</div></>:"Zatím nikdo nemá zadané datum narození"}/></div></div></Card></section>
+    <section><div className="mb-4"><h2 className="text-lg font-bold">Škola a praxe</h2><p className="mt-1 text-xs text-slate-500">Rozvrhy na jednom místě.</p></div><div className="grid gap-6"><SchoolSchedule title="Tibíkův rozvrh" person={people.find(p=>p.email==="08matytibi3115@gmail.com")} schedule={tibiWeek==="odd"?tibiOdd:tibiEven} weekParity={tibiWeek} switcher={<div className="flex gap-2"><SmallToggle active={tibiWeek==="odd"} onClick={()=>setTibiWeek("odd")}>Lichý týden{thisWeekBadge("odd")}</SmallToggle><SmallToggle active={tibiWeek==="even"} onClick={()=>setTibiWeek("even")}>Sudý týden{thisWeekBadge("even")}</SmallToggle></div>}/><div><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="text-xl opacity-70">{seasonB}</span><div><h3 className="font-bold text-[#f1e7dc]">Davčův rozvrh</h3><p className="text-xs text-[#9f8d7e]">Sudý = škola, lichý = praxe</p></div></div><div className="flex gap-2"><SmallToggle active={davidWeek==="odd"} onClick={()=>setDavidWeek("odd")}>Lichý týden{thisWeekBadge("odd")}</SmallToggle><SmallToggle active={davidWeek==="even"} onClick={()=>setDavidWeek("even")}>Sudý týden{thisWeekBadge("even")}</SmallToggle></div></div>{davidWeek==="even"?<SchoolSchedule title="Davčův školní rozvrh" person={people.find(p=>p.email==="dkudlata9@gmail.com")} schedule={davidSchool} weekParity="even"/>:<DavidPracticeSchedule practice={practice} canEdit={currentPerson?.email==="dkudlata9@gmail.com"||isAdminEmail(currentPerson?.email)} onAdd={openPractice} onDelete={deletePractice}/>}</div></div></section>
     {detailPerson&&(()=>{
       const currentShift=shifts
         .filter(s=>s.userId===detailPerson.id&&s.type!=="vacation"&&s.type!=="sick")
@@ -1731,7 +1917,7 @@ function Overview({ people, shifts, currentPerson, events, nameDay, openAddShift
 function InfoBubble({label,value,icon,small=false}:{label:string;value:ReactNode;icon:string;small?:boolean}){return <div className="rounded-2xl border border-orange-300/10 bg-orange-300/[0.035] p-4"><div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.12em] text-orange-300/60"><Icon name={icon} size={14}/>{label}</div><div className={`${small?"text-sm":"text-xl"} mt-2 font-black text-slate-100`}>{value}</div></div>}
 function AutumnSectionTitle({ text }: { text: string }) {
   const mode = useContext(ThemeModeCtx);
-  const [a, b] = mode === "halloween" ? ["🎃", "🦇"] : ["🍂", "🍁"];
+  const [a, b] = mode === "halloween" ? ["🎃", "🦇"] : mode === "winter" ? ["❄️", "⛄"] : ["🍂", "🍁"];
   return <div className="autumn-only season-title mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-[.16em] text-orange-300/80"><span className="autumn-leaf-accent text-base">{a}</span>{seasonTitle(text, mode)}<div className="h-px flex-1 bg-gradient-to-r from-orange-400/45 via-amber-300/18 to-transparent" /><span className="autumn-leaf-accent text-base opacity-70">{b}</span></div>;
 }
 
@@ -1760,7 +1946,8 @@ function subjectColor(short: string, hw = false) {
 
 function SchoolSchedule({title,person,schedule,switcher,weekParity}:{title:string;person?:Person;schedule:WeekSchedule;switcher?:ReactNode;weekParity?:"odd"|"even"}){
   const now=new Date();
-  const hw=useContext(ThemeModeCtx)==="halloween";
+  const scheduleMode=useContext(ThemeModeCtx);
+  const hw=scheduleMode==="halloween";
   const todayKey=["Ne","Po","Út","St","Čt","Pá","So"][now.getDay()];
   const isCurrentWeek=weekParity!==undefined&&(isoWeekNumber(now)%2===1?"odd":"even")===weekParity;
   const nowMinutes=now.getHours()*60+now.getMinutes();
@@ -1790,7 +1977,7 @@ function SchoolSchedule({title,person,schedule,switcher,weekParity}:{title:strin
               const empty=l.subject==="—";
               const isNow=isToday&&i===currentPeriod&&!empty;
               const color=empty?null:subjectColor(shortSubject(l.subject),hw);
-              return <div key={`${day}-${i}`} title={`${l.subject}${l.room?` · ${l.room}`:""}`} style={color?{borderColor:`${color}${isToday?"88":"44"}`,background:`linear-gradient(145deg,${color}22,${hw?"rgba(20,11,28,.92)":"rgba(30,26,22,.92)"})`}:undefined} className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center rounded-xl border px-2 py-2 text-center transition ${empty?"border-transparent bg-transparent text-[#4d433c]":"border-[#6e5a49]/45 bg-[linear-gradient(145deg,rgba(53,43,35,.88),rgba(30,26,22,.92))] text-[#efe6dd] hover:brightness-125"} ${isNow?"ring-2 ring-orange-400/80 shadow-[0_0_22px_rgba(251,146,60,.28)]":""} ${isToday&&!empty&&!color?"border-orange-300/30":""} ${!empty&&!color?"school-plain":""}`}>
+              return <div key={`${day}-${i}`} title={`${l.subject}${l.room?` · ${l.room}`:""}`} style={color?{borderColor:`${color}${isToday?"88":"44"}`,background:`linear-gradient(145deg,${color}22,${hw?"rgba(20,11,28,.92)":scheduleMode==="winter"?"rgba(10,20,36,.92)":"rgba(30,26,22,.92)"})`}:undefined} className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center rounded-xl border px-2 py-2 text-center transition ${empty?"border-transparent bg-transparent text-[#4d433c]":"border-[#6e5a49]/45 bg-[linear-gradient(145deg,rgba(53,43,35,.88),rgba(30,26,22,.92))] text-[#efe6dd] hover:brightness-125"} ${isNow?"ring-2 ring-orange-400/80 shadow-[0_0_22px_rgba(251,146,60,.28)]":""} ${isToday&&!empty&&!color?"border-orange-300/30":""} ${!empty&&!color?"school-plain":""}`}>
                 <div className="font-bold">{shortSubject(l.subject)}</div>
                 {l.room&&l.subject!=="—"&&<div className="mt-1 text-[10px] font-medium text-[#b3a090]">uč. {l.room}</div>}
               </div>})}
@@ -1815,8 +2002,8 @@ function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerso
   const [dayDetail,setDayDetail]=useState<string|null>(null);
   const themeMode=useContext(ThemeModeCtx);
   const halloween=themeMode==="halloween";
-  const leafA=halloween?"🎃":"🍁";
-  const leafB=halloween?"🦇":"🍂";
+  const winter=themeMode==="winter";
+  const [leafA,leafB]=seasonIcons(themeMode);
   const cells=useMemo(() => {
     const result:(number|null)[]=[];
     for(let i=0;i<mondayOffset(year,month);i++)result.push(null);
@@ -1868,7 +2055,7 @@ function ShiftsPage({people,shifts,currentPerson,selectedPerson,setSelectedPerso
   },[shifts,allIds,filter,year,month]);
   const peopleById=useMemo(() => new Map(people.map(person=>[person.id,person])),[people]);
   const today=isoToday();
-  const octoberAutumn=(autumn&&month===9)||halloween;
+  const octoberAutumn=(autumn&&month===9)||halloween||winter;
 
   const printShifts = () => {
     const monthStart=`${year}-${String(month+1).padStart(2,"0")}-01`;
@@ -2146,6 +2333,7 @@ function EventsPage({events,people,currentPerson,openCreate,deleteEvent,onEditEv
   const [selectedEvent,setSelectedEvent]=useState<EventItem|null>(null);
   const [category,setCategory]=useState<EventCategory|"all">("all");
   const [showPast,setShowPast]=useState(false);
+  const eventsMode=useContext(ThemeModeCtx);
   const today=isoToday();
   const monthKey=today.slice(0,7);
 
@@ -2176,7 +2364,7 @@ function EventsPage({events,people,currentPerson,openCreate,deleteEvent,onEditEv
     </div>
 
     {events.length===0
-      ?<div className="rounded-3xl border border-dashed border-orange-300/10 bg-orange-300/[0.025] py-16 text-center"><div className="text-5xl">🍂</div><div className="mt-4 text-base font-semibold text-slate-300">Zatím žádná událost</div><p className="mt-1 text-xs text-slate-500">Naplánuj sport, výlet nebo cokoli jiného.</p></div>
+      ?<div className="rounded-3xl border border-dashed border-orange-300/10 bg-orange-300/[0.025] py-16 text-center"><div className="text-5xl">{seasonIcons(eventsMode)[1]}</div><div className="mt-4 text-base font-semibold text-slate-300">Zatím žádná událost</div><p className="mt-1 text-xs text-slate-500">Naplánuj sport, výlet nebo cokoli jiného.</p></div>
       :<div className="grid gap-6 xl:grid-cols-[1fr_320px]">
         <div className="min-w-0">
           {hero?<EventHero event={hero} people={people} today={today} onOpen={()=>setSelectedEvent(hero)}/>:<div className="mb-8"><Empty text="Žádné nadcházející události v téhle kategorii."/></div>}
@@ -2334,6 +2522,7 @@ function SettingsPage({currentPerson,setPeople,members,themeColor,setThemeColor,
   const uploadAvatar=async(file?:File)=>{if(!currentPerson||!file)return;setUploadingAvatar(true);setMessage("");const ext=file.name.split(".").pop()?.toLowerCase()||"jpg";const path=`${currentPerson.id}/avatar.${ext}`;const {error:uploadError}=await supabase.storage.from("avatars").upload(path,file,{upsert:true,contentType:file.type||undefined});if(uploadError){setMessage(`Fotku se nepodařilo nahrát: ${uploadError.message}`);setUploadingAvatar(false);return;}const {data}=supabase.storage.from("avatars").getPublicUrl(path);const url=`${data.publicUrl}?v=${Date.now()}`;const {error}=await supabase.from("users").update({avatar:url}).eq("id",currentPerson.id);if(error)setMessage(`Fotka se nahrála, ale neuložila k profilu: ${error.message}`);else{setPeople(prev=>prev.map(p=>p.id===currentPerson.id?{...p,avatar:url}:p));setMessage("Profilová fotka byla uložena.");}setUploadingAvatar(false);};
   const changePassword=async()=>{if(!currentPerson)return;if(newPassword!==newAgain){setMessage("Nová hesla se neshodují.");return;}if(newPassword.length<6){setMessage("Nové heslo musí mít alespoň 6 znaků.");return;}const {error:loginErr}=await supabase.auth.signInWithPassword({email:currentPerson.email,password:oldPassword});if(loginErr){setMessage("Staré heslo není správně.");return;}const {error}=await supabase.auth.updateUser({password:newPassword});if(error)setMessage(error.message);else{setMessage("Heslo bylo úspěšně změněno.");setOldPassword("");setNewPassword("");setNewAgain("");}};
 
+  const settingsIcons=seasonIcons(useContext(ThemeModeCtx));
   const themePresets=["#8b4a2f","#9a4f2c","#ad633f","#c47a45","#7b5b47","#8f6b4f","#6f8f72","#b84a3a"];
   return <div><PageHeader eyebrow="ÚČET" title="Nastavení" description="Profil, vzhled webu a zabezpečení."/><AutumnSectionTitle text="Podzimní nastavení"/><div className="grid gap-5 xl:grid-cols-2">
     <Card className="p-6"><div className="flex items-center gap-2"><Icon name="camera" size={18}/><h2 className="font-bold">Profil</h2></div>{currentPerson&&<>
@@ -2365,8 +2554,9 @@ function SettingsPage({currentPerson,setPeople,members,themeColor,setThemeColor,
         <button onClick={()=>{setThemeColor(APP_ACCENT);setThemeColor2(APP_ACCENT_SECONDARY);}} className="mt-4 rounded-xl border border-white/[0.08] px-4 py-2.5 text-xs text-slate-400 hover:bg-white/[0.04] hover:text-white">Vrátit výchozí vzhled</button>
       </div>
     </Card>
-    <Card className="p-6 xl:col-span-2"><div className="flex items-center gap-2"><Icon name="leaf" size={18}/><h2 className="font-bold">Sezónní vzhled a animace</h2></div><p className="mt-3 text-sm text-slate-400">Přepni mezi podzimním Směnovníkem {APP_VERSION} a původním klasickým vzhledem. Animace lze vypnout zvlášť.</p><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{([
-  ["auto", "🗓️", "Automaticky", "Listopad Halloween, ostatní měsíce podzim."],
+    <Card className="p-6 xl:col-span-2"><div className="flex items-center gap-2"><Icon name="leaf" size={18}/><h2 className="font-bold">Sezónní vzhled a animace</h2></div><p className="mt-3 text-sm text-slate-400">Přepni mezi zimním, podzimním, halloweenským a původním klasickým vzhledem. Animace lze vypnout zvlášť.</p><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{([
+  ["auto", "🗓️", "Automaticky", "Listopad–únor zima, ostatní měsíce podzim."],
+  ["winter", "❄️", "Zimní", "Ledově modrá, sníh, v prosinci světýlka."],
   ["autumn", "🍁", "Podzimní", "Měděná, oranžová, listí."],
   ["classic", "✨", "Klasický", "Původní barevný Směnovník."],
   ["halloween", "🎃", "Halloween", "Dýně, netopýři, blikající strašidelné domky."],
@@ -2379,7 +2569,7 @@ function SettingsPage({currentPerson,setPeople,members,themeColor,setThemeColor,
       <div className="absolute inset-x-3 bottom-3 rounded-lg bg-black/80 px-2 py-1.5 text-center text-[11px] font-bold text-red-300">Ještě si počkej, 31. 10. se to přepne</div>
     </>}
   </button>;
-})}</div><button type="button" onClick={()=>setAnimationsEnabled(!animationsEnabled)} className="relative mt-4 flex w-full items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-black/15 p-4 text-left"><div className="pointer-events-none absolute -left-3 -bottom-6 text-7xl opacity-[0.08]">🍂</div><div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-300/15 bg-orange-400/[0.06] text-2xl">🍁</div><div><div className="text-sm font-bold">Animace</div><div className="mt-1 text-xs text-slate-500">Padání listí a další jemné pohyby.</div></div></div><div className={`relative h-7 w-12 rounded-full p-1 transition ${animationsEnabled?"bg-orange-500":"bg-slate-700"}`}><div className={`h-5 w-5 rounded-full bg-white transition ${animationsEnabled?"translate-x-5":""}`}/></div></button></Card>
+})}</div><button type="button" onClick={()=>setAnimationsEnabled(!animationsEnabled)} className="relative mt-4 flex w-full items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-black/15 p-4 text-left"><div className="pointer-events-none absolute -left-3 -bottom-6 text-7xl opacity-[0.08]">{settingsIcons[1]}</div><div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-300/15 bg-orange-400/[0.06] text-2xl">{settingsIcons[0]}</div><div><div className="text-sm font-bold">Animace</div><div className="mt-1 text-xs text-slate-500">Padání sněhu nebo listí a další jemné pohyby.</div></div></div><div className={`relative h-7 w-12 rounded-full p-1 transition ${animationsEnabled?"bg-orange-500":"bg-slate-700"}`}><div className={`h-5 w-5 rounded-full bg-white transition ${animationsEnabled?"translate-x-5":""}`}/></div></button></Card>
     <Card className="p-6 xl:col-span-2"><div className="flex items-center gap-2"><Icon name="lock" size={18}/><h2 className="font-bold">Změna hesla</h2></div><div className="mt-5 grid gap-3 md:grid-cols-3"><PasswordInput label="Staré heslo" value={oldPassword} onChange={setOldPassword}/><PasswordInput label="Nové heslo" value={newPassword} onChange={setNewPassword}/><PasswordInput label="Nové heslo znovu" value={newAgain} onChange={setNewAgain}/></div><button onClick={changePassword} className="theme-primary mt-5 rounded-xl px-5 py-3 text-xs font-bold text-white hover:brightness-110">Změnit heslo</button>{message&&<div className="mt-4 rounded-xl bg-white/[0.03] px-4 py-3 text-xs text-slate-400">{message}</div>}</Card>
   </div></div>
 }
@@ -2418,7 +2608,8 @@ function PracticeModal({initialDate,onClose,onSave}:{initialDate?:string;onClose
 
 function DavidPracticeSchedule({practice,canEdit,onAdd,onDelete}:{practice:PracticeItem[];canEdit:boolean;onAdd:(date?:string)=>void;onDelete:(id:string)=>Promise<void>}){
   const days=nearestOddWeekDays();
-  return <div className="relative overflow-hidden rounded-3xl school-card border border-[#5a4637]/55 bg-[linear-gradient(145deg,rgba(30,24,20,.97),rgba(15,13,12,.98))] p-5 shadow-[0_18px_50px_rgba(0,0,0,.28)] sm:p-6"><div className="pointer-events-none absolute -right-16 -top-14 text-7xl opacity-[0.05]">🍂</div><div className="relative mb-5 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#6e5a49]/40 bg-[#2b241f] text-[#c9b7a7]"><Icon name="briefcase"/></div><div><h3 className="font-bold text-[#f1e7dc]">Davčův lichý týden – praxe</h3><p className="text-xs text-[#9f8d7e]">Klikni na den od pondělí do soboty a nastav čas od–do.</p></div></div><div className="relative grid gap-3 md:grid-cols-3 xl:grid-cols-6">{days.map(({day,date})=>{const item=practice.find(p=>p.date===date);return <button key={date} type="button" disabled={!canEdit} onClick={()=>onAdd(date)} className="school-plain min-h-[140px] rounded-2xl border border-[#6e5a49]/40 bg-[linear-gradient(145deg,rgba(53,43,35,.88),rgba(29,25,22,.94))] p-4 text-left transition hover:-translate-y-1 hover:border-[#8b735e]/65 hover:bg-[linear-gradient(145deg,rgba(63,51,41,.94),rgba(35,30,25,.96))] disabled:cursor-default"><div className="text-xs font-black text-[#d8c8b9]">{day}</div><div className="mt-1 text-[11px] text-[#7f7064]">{new Date(`${date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})}</div>{item?<><div className="mt-5 text-lg font-black text-[#f4ece4]">{item.startTime}–{item.endTime}</div><div className="mt-2 line-clamp-2 text-xs text-[#a89687]">{item.note||"Praxe"}</div>{canEdit&&<span onClick={e=>{e.stopPropagation();onDelete(item.id)}} className="mt-3 inline-block text-[10px] text-red-400">Smazat</span>}</>:<><div className="mt-5 text-2xl text-[#8f7d6f] opacity-60">＋</div><div className="mt-2 text-xs text-[#8f7d6f]">{canEdit?"Nastavit praxi":"Bez zapsané praxe"}</div></>}</button>})}</div></div>
+  const practiceIcon=seasonIcons(useContext(ThemeModeCtx))[1];
+  return <div className="relative overflow-hidden rounded-3xl school-card border border-[#5a4637]/55 bg-[linear-gradient(145deg,rgba(30,24,20,.97),rgba(15,13,12,.98))] p-5 shadow-[0_18px_50px_rgba(0,0,0,.28)] sm:p-6"><div className="pointer-events-none absolute -right-16 -top-14 text-7xl opacity-[0.05]">{practiceIcon}</div><div className="relative mb-5 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#6e5a49]/40 bg-[#2b241f] text-[#c9b7a7]"><Icon name="briefcase"/></div><div><h3 className="font-bold text-[#f1e7dc]">Davčův lichý týden – praxe</h3><p className="text-xs text-[#9f8d7e]">Klikni na den od pondělí do soboty a nastav čas od–do.</p></div></div><div className="relative grid gap-3 md:grid-cols-3 xl:grid-cols-6">{days.map(({day,date})=>{const item=practice.find(p=>p.date===date);return <button key={date} type="button" disabled={!canEdit} onClick={()=>onAdd(date)} className="school-plain min-h-[140px] rounded-2xl border border-[#6e5a49]/40 bg-[linear-gradient(145deg,rgba(53,43,35,.88),rgba(29,25,22,.94))] p-4 text-left transition hover:-translate-y-1 hover:border-[#8b735e]/65 hover:bg-[linear-gradient(145deg,rgba(63,51,41,.94),rgba(35,30,25,.96))] disabled:cursor-default"><div className="text-xs font-black text-[#d8c8b9]">{day}</div><div className="mt-1 text-[11px] text-[#7f7064]">{new Date(`${date}T12:00:00`).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"})}</div>{item?<><div className="mt-5 text-lg font-black text-[#f4ece4]">{item.startTime}–{item.endTime}</div><div className="mt-2 line-clamp-2 text-xs text-[#a89687]">{item.note||"Praxe"}</div>{canEdit&&<span onClick={e=>{e.stopPropagation();onDelete(item.id)}} className="mt-3 inline-block text-[10px] text-red-400">Smazat</span>}</>:<><div className="mt-5 text-2xl text-[#8f7d6f] opacity-60">＋</div><div className="mt-2 text-xs text-[#8f7d6f]">{canEdit?"Nastavit praxi":"Bez zapsané praxe"}</div></>}</button>})}</div></div>
 }
 
 function ReviewsPage({ shifts, people, currentPerson, onRateShift }: { shifts: Shift[]; people: Person[]; currentPerson: Person | null; onRateShift: (shift: Shift, rating: number, reason: string, tramNumber: string, tramRating: TramRating | null) => Promise<boolean> }) {
@@ -2502,10 +2693,17 @@ function UpdatesPage(){
       <Card className="relative overflow-hidden p-6"><div className="text-5xl">📬</div><div className="mt-5 text-3xl font-black">Aktualizace 2.2</div><div className="mt-2 text-sm text-slate-500">Schránka, hodnocení směn a narozeniny</div><div className="mt-6 rounded-2xl border border-orange-300/10 bg-orange-300/[0.04] p-4 text-sm leading-6 text-slate-300">Přidali jsme zprávy a oznámení, hodnocení směn hvězdičkami, narozeniny členů a chytřejší události s kategoriemi.</div></Card>
       <Card className="p-6"><h2 className="font-bold">Co je nového ve verzi 2.2</h2><UpdateList items={UPDATE_ITEMS_22}/></Card>
     </div>
+
+    <div className="my-8 flex items-center gap-3"><div className="h-px flex-1 bg-gradient-to-r from-transparent via-orange-300/20 to-orange-300/40"/><div className="rounded-full border border-orange-300/20 bg-orange-400/[0.06] px-4 py-2 text-xs font-black uppercase tracking-[.18em] text-orange-300">Aktualizace 2.3</div><div className="h-px flex-1 bg-gradient-to-l from-transparent via-orange-300/20 to-orange-300/40"/></div>
+
+    <div className="grid gap-5 lg:grid-cols-[.7fr_1.3fr]">
+      <Card className="relative overflow-hidden p-6"><div className="text-5xl">❄️</div><div className="mt-5 text-3xl font-black">Aktualizace 2.3</div><div className="mt-2 text-sm text-slate-500">Zimní aktualizace</div><div className="mt-6 rounded-2xl border border-orange-300/10 bg-orange-300/[0.04] p-4 text-sm leading-6 text-slate-300">Celý Směnovník dostal zimní kabát: ledové barvy, padající sníh, zasněžené městečko a v prosinci vánoční světýlka.</div></Card>
+      <Card className="p-6"><h2 className="font-bold">Co je nového ve verzi 2.3</h2><UpdateList items={UPDATE_ITEMS_23}/></Card>
+    </div>
   </div>;
 }
 
-function UpdateIntroModal({onDone}:{onDone:()=>void}){return <Modal onClose={()=>{}}><div className="text-center"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-400/10 text-3xl">🍂</div><div className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-orange-300">Směnovník {APP_VERSION}</div><h2 className="mt-2 text-2xl font-black">Vítej v aktualizaci {APP_VERSION}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Přidali jsme zprávy a oznámení, hodnocení směn, narozeniny a lepší události.</p></div><div className="mt-6 max-h-[42vh] space-y-2 overflow-y-auto pr-1">{UPDATE_ITEMS_22.map(item=><div key={item} className="flex gap-3 rounded-xl bg-white/[0.025] p-3"><span className="text-orange-300">✓</span><span className="text-sm text-slate-300">{item}</span></div>)}</div><button type="button" onClick={onDone} className="mt-6 w-full rounded-2xl theme-primary py-3.5 text-sm font-black text-white">Super, přečetl jsem si to</button></Modal>}
+function UpdateIntroModal({onDone}:{onDone:()=>void}){return <Modal onClose={()=>{}}><div className="text-center"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-400/10 text-3xl">❄️</div><div className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-sky-300">Směnovník {APP_VERSION}</div><h2 className="mt-2 text-2xl font-black">Vítej v aktualizaci {APP_VERSION}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Směnovník se oblékl do zimního. Sníh, ledové barvy a v prosinci i vánoční světýlka.</p></div><div className="mt-6 max-h-[42vh] space-y-2 overflow-y-auto pr-1">{UPDATE_ITEMS_23.map(item=><div key={item} className="flex gap-3 rounded-xl bg-white/[0.025] p-3"><span className="text-sky-300">✓</span><span className="text-sm text-slate-300">{item}</span></div>)}</div><button type="button" onClick={onDone} className="mt-6 w-full rounded-2xl theme-primary py-3.5 text-sm font-black text-white">Super, přečetl jsem si to</button></Modal>}
 
 // Pixelová zvířátka, která občas přeběhnou (nebo přeletí) po obrazovce – každý člen má svoje.
 // Mřížky „kostiček“; písmena odkazují do palety daného zvířete. Všechna zvířata hledí doprava (při chůzi doleva se zrcadlí).
@@ -2782,7 +2980,7 @@ function WalkingCat({ enabled, animal = "cat_orange" }: { enabled: boolean; anim
   </div>, document.body);
 }
 
-function ShiftSavedToast({animations}:{animations:boolean}){const mode=useContext(ThemeModeCtx);const pair=mode==="halloween"?["🎃","🦇"]:["🍂","🍁"];return <div className="pointer-events-none fixed inset-0 z-[140] flex items-start justify-center pt-24">{animations&&<div className="absolute inset-0 overflow-hidden">{Array.from({length:8},(_,i)=><span key={i} className="leaf-fall absolute -top-10 text-2xl" style={{left:`${(i*7)%100}%`,animationDelay:`${(i%6)*.12}s`,animationDuration:`${1.6+(i%4)*.25}s`}}>{i%2?pair[0]:pair[1]}</span>)}</div>}<div className="relative rounded-2xl border border-emerald-300/20 bg-[#0b1510]/95 px-5 py-3 shadow-2xl backdrop-blur-xl"><div className="flex items-center gap-3 text-sm font-bold text-emerald-200"><Icon name="check" size={18}/>Směna byla úspěšně uložena</div></div></div>}
+function ShiftSavedToast({animations}:{animations:boolean}){const mode=useContext(ThemeModeCtx);const pair=mode==="halloween"?["🎃","🦇"]:mode==="winter"?["❄️","⛄"]:["🍂","🍁"];return <div className="pointer-events-none fixed inset-0 z-[140] flex items-start justify-center pt-24">{animations&&<div className="absolute inset-0 overflow-hidden">{Array.from({length:8},(_,i)=><span key={i} className="leaf-fall absolute -top-10 text-2xl" style={{left:`${(i*7)%100}%`,animationDelay:`${(i%6)*.12}s`,animationDuration:`${1.6+(i%4)*.25}s`}}>{i%2?pair[0]:pair[1]}</span>)}</div>}<div className="relative rounded-2xl border border-emerald-300/20 bg-[#0b1510]/95 px-5 py-3 shadow-2xl backdrop-blur-xl"><div className="flex items-center gap-3 text-sm font-bold text-emerald-200"><Icon name="check" size={18}/>Směna byla úspěšně uložena</div></div></div>}
 
 const AUTUMN_FALLING_LEAVES = [
   {left:"5%",delay:"-2s",duration:"17s",size:"text-2xl",leaf:"🍂"},
@@ -2814,13 +3012,14 @@ const HOUSES = [
   { x: 1040, w: 88, h: 64, r: 34, d: 1.1 },
 ];
 
-function Skyline({ winter = false, animate = true }: { winter?: boolean; animate?: boolean }) {
+function Skyline({ winter = false, animate = true, festive = false }: { winter?: boolean; animate?: boolean; festive?: boolean }) {
   const G = 146;
   const body = winter ? "#0f1c30" : "#1a0f26";
   const roof = winter ? "#dbeafe" : "#120a1b";
   const stroke = winter ? "#2a4468" : "#3a2150";
   const light = winter ? "#ffd27a" : "#ffb02e";
-  const win = animate ? "hw-win" : "";
+  const win = animate && !winter ? "hw-win" : "";
+  const BULBS = ["#ff5a5a", "#ffd54a", "#5ee08a", "#5ab8ff"];
   return <svg className="hw-skyline" viewBox="0 0 1200 160" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
     <rect x="0" y={G} width="1200" height="14" fill={winter ? "#e8f1ff" : "#0a0510"} opacity={winter ? 0.9 : 1} />
     {HOUSES.map((h, i) => {
@@ -2833,6 +3032,10 @@ function Skyline({ winter = false, animate = true }: { winter?: boolean; animate
         <rect className={win} x={h.x + h.w * 0.62} y={top + h.h * 0.24} width={h.w * 0.22} height={h.h * 0.22} fill={light} style={{ animationDelay: `${h.d + 1.4}s` }} stroke="none" />
         <rect x={h.x + h.w * 0.4} y={G - h.h * 0.34} width={h.w * 0.2} height={h.h * 0.34} fill="#0b0610" stroke="none" />
         {i % 3 === 0 && <rect className={win} x={h.x + h.w * 0.4} y={top + h.h * 0.55} width={h.w * 0.2} height={h.h * 0.14} fill={light} style={{ animationDelay: `${h.d + 0.7}s` }} stroke="none" />}
+        {winter && festive && [0.12, 0.3, 0.48, 0.66, 0.84].flatMap(t => [
+          [h.x - 6 + (h.w / 2 + 6) * t, top - h.r * t + 2.5],
+          [h.x + h.w + 6 - (h.w / 2 + 6) * t, top - h.r * t + 2.5],
+        ]).map(([bx, by], k) => <circle key={`b${k}`} className={animate ? "xmas-bulb" : ""} cx={bx} cy={by} r="2" fill={BULBS[(k + i) % BULBS.length]} stroke="none" style={{ animationDelay: `${((k * 0.37 + i * 0.21) % 1.6).toFixed(2)}s`, filter: `drop-shadow(0 0 3px ${BULBS[(k + i) % BULBS.length]})` }} />)}
       </g>;
     })}
     {!winter && [310, 690, 1010].map((x, i) => <g key={x}>
@@ -2868,6 +3071,44 @@ const HalloweenDecor = memo(function HalloweenDecor({ animations }: { animations
   </div>;
 });
 
+
+// Sněhové vločky – pevně dané hodnoty (stejné na serveru i v prohlížeči), každá padá jinou rychlostí a kývá se do stran.
+const SNOWFLAKES = Array.from({ length: 34 }, (_, i) => {
+  const r = (n: number) => ((Math.sin((i + 1) * n) + 1) / 2);
+  const glyph = i % 7 === 0;
+  return {
+    left: `${(i * 37 + 11) % 100}%`,
+    size: glyph ? 12 + Math.round(r(3.1) * 8) : 2 + Math.round(r(5.7) * 4),
+    duration: `${12 + Math.round(r(2.3) * 14)}s`,
+    delay: `-${Math.round(r(7.9) * 26)}s`,
+    sway: `${(i % 2 ? -1 : 1) * (14 + Math.round(r(4.4) * 30))}px`,
+    swayDuration: `${3 + Math.round(r(6.2) * 4)}s`,
+    opacity: (0.35 + r(8.8) * 0.5).toFixed(2),
+    blur: !glyph && i % 4 === 0,
+    glyph,
+  };
+});
+
+const WinterDecor = memo(function WinterDecor({ animations }: { animations: boolean }) {
+  const festive = isFestiveSeason();
+  return <div className="autumn-decor winter-decor pointer-events-none fixed inset-0 overflow-hidden">
+    <div className="absolute -left-24 -top-24 h-[420px] w-[420px] rounded-full bg-sky-400/[0.08] blur-[130px]" />
+    <div className="absolute -right-20 top-[14%] h-[360px] w-[360px] rounded-full bg-indigo-500/[0.07] blur-[130px]" />
+    <div className="absolute bottom-[-120px] left-[38%] h-[360px] w-[520px] rounded-full bg-sky-900/[0.18] blur-[140px]" />
+    <div className="hw-moon" style={{ background: "#eef6ff", boxShadow: "0 0 70px rgba(200,230,255,.35)", opacity: .7 }} />
+    <div className="frost-shimmer absolute left-[12%] top-[38%] text-6xl opacity-[0.07]">❄️</div>
+    <div className="absolute right-[16%] bottom-[24%] text-5xl opacity-[0.07]">{festive ? "🎄" : "⛄"}</div>
+    <div className="absolute right-[6%] top-[30%] text-4xl opacity-[0.05]">❄️</div>
+    <Skyline winter festive={festive} animate={animations} />
+    {animations && SNOWFLAKES.map((f, i) => <span key={i} className="snow-fall" style={{ left: f.left, animationDuration: f.duration, animationDelay: f.delay, ["--o" as string]: f.opacity } as React.CSSProperties}>
+      <span className="snow-sway" style={{ animationDuration: f.swayDuration, ["--sway" as string]: f.sway } as React.CSSProperties}>
+        {f.glyph
+          ? <span style={{ display: "block", fontSize: f.size, lineHeight: 1, color: "#fff", textShadow: "0 0 8px rgba(190,225,255,.8)" }}>❄</span>
+          : <span className="snow-dot" style={{ width: f.size, height: f.size, filter: f.blur ? "blur(1px)" : undefined }} />}
+      </span>
+    </span>)}
+  </div>;
+});
 
 const AutumnDecor = memo(function AutumnDecor({animations}:{animations:boolean}){
 
